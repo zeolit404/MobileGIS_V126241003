@@ -65,6 +65,15 @@ Aplikasi ini mengintegrasikan seluruh komponen inti Mobile GIS dari sisi antarmu
 
 ---
 
+## 📥 Download Aplikasi (APK Siap Install)
+
+File APK hasil kompilasi rilis sudah tersedia langsung di dalam repository pada folder [`apk_release/`](./apk_release/):
+* 📲 **[Download APK (ARM64 untuk HP Modern)](./apk_release/app-arm64-v8a-release.apk)** *(Disarankan - 18.6 MB)*
+* 📲 **[Download APK (ARM32 / v7a)](./apk_release/app-armeabi-v7a-release.apk)** *(16.0 MB)*
+* 📲 **[Download APK (x86_64 Emulator/Intel)](./apk_release/app-x86_64-release.apk)** *(20.1 MB)*
+
+---
+
 ## 📂 Struktur Direktori Proyek
 
 ```text
