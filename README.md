@@ -10,7 +10,7 @@ Repositori ini berisi kode sumber aplikasi **Praktek Mobile GIS** berbasis **Flu
 * **Program Studi** : D4 Penginderaan Jauh dan Sistem Informasi Geografis (PJ-SIG)
 * **Fakultas** : Fakultas Vokasi, Universitas Hasanuddin
 * **Mata Kuliah** : Praktek Mobile GIS (2026)
-* **Dosen Pengampu** : Agus Aris, S.Kel., M.Sc.
+* **Dosen Pengampu** : Dr. Agus Aris, S.Kel., M.Sc.
 
 ---
 
