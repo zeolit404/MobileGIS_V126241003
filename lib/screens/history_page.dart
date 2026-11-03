@@ -64,7 +64,7 @@ class _HistoryPageState extends State<HistoryPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (kIsWeb)
-              Image.network(fotoPath, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50))
+              Image.network(fotoPath, errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50))
             else
               Image.file(File(fotoPath)),
             TextButton(
@@ -100,7 +100,7 @@ class _HistoryPageState extends State<HistoryPage> {
         width: 76,
         height: 76,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        errorBuilder: (context, error, stackTrace) => Container(
           width: 76,
           height: 76,
           color: Colors.grey.shade200,

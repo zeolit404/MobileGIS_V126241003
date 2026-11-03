@@ -123,7 +123,7 @@ class _MapPageState extends State<MapPage> {
           width: 54,
           height: 54,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
+          errorBuilder: (context, error, stackTrace) => Container(
             width: 54,
             height: 54,
             decoration: BoxDecoration(
