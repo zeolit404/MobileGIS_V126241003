@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../db/database_helper.dart';
+import '../models/survey_point.dart';
 import '../services/location_service.dart';
 
 enum MapLayerType {
-  openStreetMap,
+  rbiIndonesia, // Peta Dasar RBI dari BIG (Default tugas Arief)
   googleSatellite,
+  openStreetMap,
 }
 
 class MapPage extends StatefulWidget {
@@ -24,15 +28,30 @@ class _MapPageState extends State<MapPage> {
   LatLng? _currentLatLng;
   StreamSubscription<Position>? _positionSub;
 
+  // Koordinat Kampus Unhas Tamalanrea
   static const LatLng _defaultCenter = LatLng(-5.1357, 119.4886);
 
-  // Pilihan Layer Aktif (Default: OpenStreetMap)
-  MapLayerType _currentLayer = MapLayerType.openStreetMap;
+  // Fitur Arief: Default Peta Dasar RBI (BIG)
+  MapLayerType _currentLayer = MapLayerType.rbiIndonesia;
+
+  // Fitur Database: Menampilkan titik survei tersimpan
+  List<SurveyPoint> _savedPoints = [];
+
+  // Fitur Raehan: Titik yang sedang dipilih untuk popup di ATAS
+  SurveyPoint? _selectedPoint;
 
   @override
   void initState() {
     super.initState();
+    _loadSavedPoints();
     _startListeningLocation();
+  }
+
+  Future<void> _loadSavedPoints() async {
+    try {
+      final points = await DatabaseHelper.instance.getAllSurveys();
+      if (mounted) setState(() => _savedPoints = points);
+    } catch (_) {}
   }
 
   void _startListeningLocation() {
@@ -48,9 +67,7 @@ class _MapPageState extends State<MapPage> {
         .then((position) {
           final latLng = LatLng(position.latitude, position.longitude);
           if (mounted) {
-            setState(() {
-              _currentLatLng = latLng;
-            });
+            setState(() => _currentLatLng = latLng);
             _mapController.move(latLng, 16);
           }
         })
@@ -72,11 +89,15 @@ class _MapPageState extends State<MapPage> {
     _mapController.move(_mapController.camera.center, currentZoom - 1);
   }
 
-  void _toggleLayer() {
+  void _cycleLayer() {
     setState(() {
-      _currentLayer = _currentLayer == MapLayerType.openStreetMap
-          ? MapLayerType.googleSatellite
-          : MapLayerType.openStreetMap;
+      if (_currentLayer == MapLayerType.rbiIndonesia) {
+        _currentLayer = MapLayerType.googleSatellite;
+      } else if (_currentLayer == MapLayerType.googleSatellite) {
+        _currentLayer = MapLayerType.openStreetMap;
+      } else {
+        _currentLayer = MapLayerType.rbiIndonesia;
+      }
     });
   }
 
@@ -88,64 +109,84 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Sesuai modul: hanya marker referensi dan marker GPS pengguna
+    // Menentukan URL Tile sesuai layer
+    String tileUrl;
+    String layerName;
+    switch (_currentLayer) {
+      case MapLayerType.rbiIndonesia:
+        // Peta Dasar RBI BIG (format ArcGIS REST: {z}/{y}/{x})
+        tileUrl = 'https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/tile/{z}/{y}/{x}';
+        layerName = 'Peta Dasar RBI (BIG)';
+        break;
+      case MapLayerType.googleSatellite:
+        tileUrl = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+        layerName = 'Google Satelit';
+        break;
+      case MapLayerType.openStreetMap:
+        tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        layerName = 'OpenStreetMap';
+        break;
+    }
+
     final markers = <Marker>[
+      // 1. Marker Referensi Kampus Unhas
       Marker(
         point: _defaultCenter,
-        width: 40,
-        height: 40,
-        child: const Icon(
-          Icons.location_on,
-          color: Colors.red,
-          size: 40,
-        ),
+        width: 36,
+        height: 36,
+        child: const Icon(Icons.school, color: Color(0xFF1E293B), size: 30),
       ),
+
+      // 2. Fitur Raehan: Titik-titik survei dari database berwarna KUNING EMAS
+      ..._savedPoints.map((point) {
+        final pos = LatLng(point.latitude, point.longitude);
+        final isSelected = _selectedPoint?.id == point.id;
+        return Marker(
+          point: pos,
+          width: 42,
+          height: 42,
+          child: GestureDetector(
+            onTap: () {
+              setState(() => _selectedPoint = point);
+              _mapController.move(pos, 16.5);
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.amberAccent : Colors.amber.shade700, // TITIK KUNING
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white,
+                  width: isSelected ? 3 : 2,
+                ),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
+                ],
+              ),
+              child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+            ),
+          ),
+        );
+      }),
+
+      // 3. Marker Lokasi Pengguna (GPS)
       if (_currentLatLng != null)
         Marker(
           point: _currentLatLng!,
-          width: 40,
-          height: 40,
-          child: const Icon(
-            Icons.my_location,
-            color: Colors.blue,
-            size: 36,
+          width: 44,
+          height: 44,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.25),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Icon(Icons.my_location, color: Colors.blueAccent, size: 28),
+            ),
           ),
         ),
     ];
 
-    // Menentukan URL basemap berdasarkan layer yang dipilih
-    final isSatellite = _currentLayer == MapLayerType.googleSatellite;
-    final tileUrl = isSatellite
-        ? 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Peta'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14.0),
-            child: Chip(
-              avatar: Icon(
-                _currentLatLng != null ? Icons.gps_fixed : Icons.gps_not_fixed,
-                size: 16,
-                color: _currentLatLng != null ? Colors.white : Colors.amber.shade900,
-              ),
-              label: Text(
-                _currentLatLng != null ? 'GPS Aktif' : 'Mencari GPS',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _currentLatLng != null ? Colors.white : Colors.amber.shade900,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              backgroundColor: _currentLatLng != null ? Colors.green.shade600 : Colors.amber.shade100,
-              side: BorderSide.none,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           FlutterMap(
@@ -153,6 +194,11 @@ class _MapPageState extends State<MapPage> {
             options: MapOptions(
               initialCenter: _currentLatLng ?? _defaultCenter,
               initialZoom: 16,
+              onTap: (_, p) {
+                if (_selectedPoint != null) {
+                  setState(() => _selectedPoint = null);
+                }
+              },
             ),
             children: [
               TileLayer(
@@ -164,24 +210,105 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
 
-          // Tombol Kontrol Peta Samping Kanan (Ganti Layer, Zoom in, Zoom out, My Location)
-          Positioned(
-            right: 16,
-            bottom: 60,
-            child: Column(
-              children: [
-                // Tombol Ganti Layer (Satelit / OSM)
-                FloatingActionButton.small(
-                  heroTag: 'btnToggleLayer',
-                  onPressed: _toggleLayer,
-                  backgroundColor: Colors.white,
-                  tooltip: isSatellite ? 'Mode Standar (OSM)' : 'Mode Satelit Google',
-                  child: Icon(
-                    isSatellite ? Icons.map_outlined : Icons.satellite_alt_outlined,
-                    color: Colors.green.shade800,
+          // FITUR RAEHAN: POPUP DI BAGIAN ATAS LAYAR (TOP SHEET CARD)
+          if (_selectedPoint != null)
+            Positioned(
+              top: 14,
+              left: 14,
+              right: 14,
+              child: Card(
+                elevation: 6,
+                color: const Color(0xFF0F172A), // Dark Navy yang bersih
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: Colors.amber, width: 1.5),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Preview Foto jika ada (Fitur Ifa)
+                      if (_selectedPoint!.fotoPath != null &&
+                          File(_selectedPoint!.fotoPath!).existsSync())
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(_selectedPoint!.fotoPath!),
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      else
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade700,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.place, color: Colors.white, size: 28),
+                        ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _selectedPoint!.nama,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Kategori: ${_selectedPoint!.kategori}',
+                              style: const TextStyle(fontSize: 12, color: Colors.amber),
+                            ),
+                            Text(
+                              '(${_selectedPoint!.latitude.toStringAsFixed(5)}, ${_selectedPoint!.longitude.toStringAsFixed(5)})',
+                              style: const TextStyle(fontSize: 11, color: Colors.white70),
+                            ),
+                            if (_selectedPoint!.keterangan != null &&
+                                _selectedPoint!.keterangan!.isNotEmpty)
+                              Text(
+                                _selectedPoint!.keterangan!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: Colors.white60),
+                              ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                        onPressed: () => setState(() => _selectedPoint = null),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
+              ),
+            ),
+
+          // Tombol Kontrol Peta Samping Kanan
+          Positioned(
+            right: 14,
+            bottom: 50,
+            child: Column(
+              children: [
+                // Tombol Switcher Layer (RBI / Satelit / OSM)
+                FloatingActionButton.small(
+                  heroTag: 'btnCycleLayer',
+                  onPressed: _cycleLayer,
+                  backgroundColor: const Color(0xFF1E293B),
+                  foregroundColor: Colors.amber,
+                  tooltip: 'Ganti Layer Peta',
+                  child: const Icon(Icons.layers_outlined),
+                ),
+                const SizedBox(height: 8),
                 FloatingActionButton.small(
                   heroTag: 'btnZoomIn',
                   onPressed: _zoomIn,
@@ -199,59 +326,41 @@ class _MapPageState extends State<MapPage> {
                 FloatingActionButton(
                   heroTag: 'btnRecenter',
                   onPressed: _recenterLocation,
-                  backgroundColor: Colors.green.shade700,
-                  child: const Icon(Icons.my_location, color: Colors.white),
+                  backgroundColor: const Color(0xFF2563EB), // Royal Blue
+                  foregroundColor: Colors.white,
+                  child: const Icon(Icons.my_location),
                 ),
               ],
             ),
           ),
 
-          // Floating Bar Koordinat Bawah (Minimalis)
+          // Bar Info Layer & Koordinat Kiri Bawah
           Positioned(
-            left: 16,
+            left: 14,
             bottom: 14,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: isSatellite ? Colors.black87 : Colors.white.withValues(alpha: 0.92),
+                color: const Color(0xFF0F172A).withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
+                  BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1)),
                 ],
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.explore_outlined,
-                    size: 16,
-                    color: isSatellite ? Colors.white70 : Colors.black54,
-                  ),
+                  const Icon(Icons.map, size: 14, color: Colors.amber),
                   const SizedBox(width: 6),
                   Text(
-                    _currentLatLng != null
-                        ? 'Lat: ${_currentLatLng!.latitude.toStringAsFixed(5)}  |  Lon: ${_currentLatLng!.longitude.toStringAsFixed(5)}'
-                        : 'Lat: ${_defaultCenter.latitude.toStringAsFixed(5)}  |  Lon: ${_defaultCenter.longitude.toStringAsFixed(5)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isSatellite ? Colors.white : Colors.black87,
-                    ),
+                    layerName,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isSatellite ? Colors.blueGrey.shade800 : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      isSatellite ? 'Satelit' : 'OSM',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: isSatellite ? Colors.lightBlueAccent : Colors.black54,
-                      ),
-                    ),
+                  Text(
+                    _currentLatLng != null
+                        ? '${_currentLatLng!.latitude.toStringAsFixed(4)}, ${_currentLatLng!.longitude.toStringAsFixed(4)}'
+                        : 'GPS Mencari...',
+                    style: const TextStyle(fontSize: 11, color: Colors.white70),
                   ),
                 ],
               ),
