@@ -23,6 +23,13 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _keteranganController = TextEditingController();
 
+  // Controller Input Koordinat Manual (Bisa Diisi Mandiri)
+  final TextEditingController _latController = TextEditingController();
+  final TextEditingController _lonController = TextEditingController();
+
+  // Mode Pengisian Koordinat: 'gps' atau 'manual'
+  bool _isManualCoordinate = false;
+
   // Kategori Survei
   String? _selectedKategori = 'Pendidikan';
   final List<String> _kategoriList = [
@@ -45,16 +52,20 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
   void dispose() {
     _namaController.dispose();
     _keteranganController.dispose();
+    _latController.dispose();
+    _lonController.dispose();
     super.dispose();
   }
 
-  // Mengambil Koordinat GPS
+  // Mengambil Koordinat GPS Otomatis
   Future<void> _ambilLokasi() async {
     setState(() => _isLoadingLocation = true);
     try {
       final position = await LocationService.getCurrentPosition();
       setState(() {
         _currentPosition = position;
+        _latController.text = position.latitude.toStringAsFixed(6);
+        _lonController.text = position.longitude.toStringAsFixed(6);
         _isLoadingLocation = false;
       });
       if (mounted) {
@@ -136,10 +147,14 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       return;
     }
 
-    if (_currentPosition == null) {
+    // Ambil nilai koordinat (dari input manual atau GPS)
+    final lat = double.tryParse(_latController.text.trim());
+    final lon = double.tryParse(_lonController.text.trim());
+
+    if (lat == null || lon == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Koordinat GPS wajib diambil terlebih dahulu!'),
+          content: Text('⚠️ Koordinat Latitude & Longitude wajib diisi dengan benar!'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -155,8 +170,8 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
         keterangan: _keteranganController.text.trim().isEmpty
             ? null
             : _keteranganController.text.trim(),
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+        latitude: lat,
+        longitude: lon,
         fotoPath: _savedImagePath,
         waktu: DateTime.now().toLocal().toString().split('.')[0],
       );
@@ -176,6 +191,8 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
         // Reset form setelah simpan
         _namaController.clear();
         _keteranganController.clear();
+        _latController.clear();
+        _lonController.clear();
         setState(() {
           _currentPosition = null;
           _imageFile = null;
@@ -247,7 +264,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               // 3. Input Keterangan / Deskripsi
               TextFormField(
                 controller: _keteranganController,
-                maxLines: 3,
+                maxLines: 2,
                 decoration: const InputDecoration(
                   labelText: 'Keterangan Tambahan (Opsional)',
                   hintText: 'Kondisi fisik, fasilitas aksesibilitas, dsb.',
@@ -257,7 +274,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               ),
               const SizedBox(height: 18),
 
-              // 4. Panel Koordinat GPS
+              // 4. Panel Koordinat (Bisa Otomatis GPS atau Diisi Mandiri)
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -268,36 +285,99 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.my_location, color: Colors.blueAccent),
-                          SizedBox(width: 8),
-                          Text(
-                            'Akuisisi Koordinat GPS',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          const Row(
+                            children: [
+                              Icon(Icons.my_location, color: Colors.blueAccent),
+                              SizedBox(width: 8),
+                              Text(
+                                'Koordinat Spasial',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                            ],
+                          ),
+                          // Switch Mode Input Mandiri
+                          Row(
+                            children: [
+                              Text(
+                                _isManualCoordinate ? 'Input Mandiri' : 'Mode GPS',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _isManualCoordinate ? Colors.blueAccent : Colors.grey.shade700,
+                                ),
+                              ),
+                              Switch(
+                                value: _isManualCoordinate,
+                                onChanged: (val) {
+                                  setState(() => _isManualCoordinate = val);
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      if (_currentPosition != null) ...[
-                        Text(
-                          'Latitude  : ${_currentPosition!.latitude.toStringAsFixed(6)}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                        Text(
-                          'Longitude : ${_currentPosition!.longitude.toStringAsFixed(6)}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                        Text(
-                          'Akurasi   : ±${_currentPosition!.accuracy.toStringAsFixed(1)} m',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                        ),
-                      ] else
-                        const Text(
-                          'Belum ada koordinat. Tekan tombol di bawah untuk mengambil titik GPS saat ini.',
-                          style: TextStyle(fontSize: 12, color: Colors.black54),
-                        ),
+
+                      // Input Mandiri Latitude & Longitude
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _latController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              decoration: InputDecoration(
+                                labelText: 'Latitude *',
+                                hintText: '-5.135700',
+                                prefixIcon: const Icon(Icons.north_south, size: 18),
+                                border: const OutlineInputBorder(),
+                                filled: !_isManualCoordinate,
+                                fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
+                              ),
+                              readOnly: !_isManualCoordinate,
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Wajib diisi';
+                                }
+                                if (double.tryParse(val.trim()) == null) {
+                                  return 'Angka tidak valid';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _lonController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              decoration: InputDecoration(
+                                labelText: 'Longitude *',
+                                hintText: '119.488600',
+                                prefixIcon: const Icon(Icons.east_west, size: 18),
+                                border: const OutlineInputBorder(),
+                                filled: !_isManualCoordinate,
+                                fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
+                              ),
+                              readOnly: !_isManualCoordinate,
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Wajib diisi';
+                                }
+                                if (double.tryParse(val.trim()) == null) {
+                                  return 'Angka tidak valid';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 12),
+
+                      // Tombol Ambil Otomatis dari GPS
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -309,9 +389,20 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.gps_fixed),
-                          label: Text(_isLoadingLocation ? 'Mengambil GPS...' : 'Ambil Lokasi Sekarang'),
+                          label: Text(_isLoadingLocation
+                              ? 'Mengambil GPS...'
+                              : 'Kunci Lokasi Otomatis (GPS)'),
                         ),
                       ),
+                      if (_currentPosition != null && !_isManualCoordinate) ...[
+                        const SizedBox(height: 6),
+                        Center(
+                          child: Text(
+                            'Akurasi GPS: ±${_currentPosition!.accuracy.toStringAsFixed(1)} meter',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

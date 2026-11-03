@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -99,6 +100,63 @@ class _MapPageState extends State<MapPage> {
         _currentLayer = MapLayerType.rbiIndonesia;
       }
     });
+  }
+
+  Widget _buildPopupImage(String? fotoPath) {
+    if (fotoPath == null || fotoPath.isEmpty) {
+      return Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          color: Colors.amber.shade700,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.place, color: Colors.white, size: 28),
+      );
+    }
+
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          fotoPath,
+          width: 54,
+          height: 54,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: Colors.amber.shade700,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.broken_image, color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      final file = File(fotoPath);
+      if (!file.existsSync()) {
+        return Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: Colors.amber.shade700,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.place, color: Colors.white, size: 28),
+        );
+      }
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          file,
+          width: 54,
+          height: 54,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
   }
 
   @override
@@ -210,7 +268,7 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
 
-          // FITUR RAEHAN: POPUP DI BAGIAN ATAS LAYAR (TOP SHEET CARD)
+          // FITUR RAEHAN: POPUP DI BAGIAN ATAS LAYAR (TOP SHEET CARD) - AMAN DARI CRASH WEB
           if (_selectedPoint != null)
             Positioned(
               top: 14,
@@ -228,28 +286,8 @@ class _MapPageState extends State<MapPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Preview Foto jika ada (Fitur Ifa)
-                      if (_selectedPoint!.fotoPath != null &&
-                          File(_selectedPoint!.fotoPath!).existsSync())
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(_selectedPoint!.fotoPath!),
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      else
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade700,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.place, color: Colors.white, size: 28),
-                        ),
+                      // Preview Foto (Aman di Web & Android)
+                      _buildPopupImage(_selectedPoint!.fotoPath),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
