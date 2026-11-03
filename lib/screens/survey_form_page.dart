@@ -331,7 +331,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               decoration: InputDecoration(
                                 labelText: 'Latitude *',
                                 hintText: '-5.135700',
-                                prefixIcon: const Icon(Icons.north_south, size: 18),
+                                prefixIcon: const Icon(Icons.navigation_outlined, size: 18),
                                 border: const OutlineInputBorder(),
                                 filled: !_isManualCoordinate,
                                 fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
@@ -356,7 +356,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               decoration: InputDecoration(
                                 labelText: 'Longitude *',
                                 hintText: '119.488600',
-                                prefixIcon: const Icon(Icons.east_west, size: 18),
+                                prefixIcon: const Icon(Icons.explore_outlined, size: 18),
                                 border: const OutlineInputBorder(),
                                 filled: !_isManualCoordinate,
                                 fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
