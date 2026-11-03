@@ -91,6 +91,10 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _cycleLayer() {
+    // Simpan posisi dan zoom kamera saat ini agar tidak melompat/reset
+    final currentCenter = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+
     setState(() {
       if (_currentLayer == MapLayerType.rbiIndonesia) {
         _currentLayer = MapLayerType.googleSatellite;
@@ -99,6 +103,11 @@ class _MapPageState extends State<MapPage> {
       } else {
         _currentLayer = MapLayerType.rbiIndonesia;
       }
+    });
+
+    // Pastikan kamera tetap berada di titik yang sama persis
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mapController.move(currentCenter, currentZoom);
     });
   }
 
