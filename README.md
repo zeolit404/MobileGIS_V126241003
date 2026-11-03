@@ -67,8 +67,8 @@ Aplikasi ini mengintegrasikan seluruh komponen inti Mobile GIS dari sisi antarmu
 
 ## 📥 Download Aplikasi (APK Siap Install)
 
-File APK siap pakai dapat diunduh langsung melalui menu **GitHub Releases**:
-👉 **[Download APK via GitHub Releases (v1.0.0)](https://github.com/zeolit404/MobileGIS_V126241003/releases/latest)**
+File APK rilis terbaru siap pakai dapat diunduh langsung melalui menu **GitHub Releases**:
+👉 **[Download APK via GitHub Releases (v1.1.0)](https://github.com/zeolit404/MobileGIS_V126241003/releases/latest)**
 
 Pilih file asset **`app-arm64-v8a-release.apk`** untuk di-install pada smartphone Android.
 
