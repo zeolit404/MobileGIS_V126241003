@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p; // membantu mengolah nama/alamat file
 import 'package:path_provider/path_provider.dart'; // mencari folder penyimpanan di HP
 import '../db/database_helper.dart'; // class untuk simpan data ke database SQLite
 import '../models/survey_point.dart'; // model/struktur data satu titik survei
-import '../services/location_service.dart'; // class untuk mengambil lokasi GPS (bisa tambahkan ini)
+import '../services/location_service.dart'; // class untuk mengambil lokasi GPS
 
 class SurveyFormPage extends StatefulWidget {
   const SurveyFormPage({super.key});
@@ -93,12 +93,12 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       if (pickedFile == null) return;
 
       if (kIsWeb) {
-        // Pada Web platform
+        // Pada Web platform (Chrome)
         setState(() {
           _savedImagePath = pickedFile.path;
         });
       } else {
-        // Pada Android / Perangkat Fisik: simpan permanen ke folder dokumen aplikasi
+        // Pada Android / Perangkat Fisik
         final appDir = await getApplicationDocumentsDirectory();
         final fileName = 'SURVEY_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedFile.path)}';
         final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
@@ -130,7 +130,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     }
   }
 
-  // Menyimpan Data ke SQLite
+  // Menyimpan Data ke SQLite / Memory Store
   Future<void> _simpanSurvei() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -161,15 +161,13 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
         waktu: DateTime.now().toLocal().toString().split('.')[0],
       );
 
-      // Simpan ke database lokal SQLite
-      if (!kIsWeb) {
-        await DatabaseHelper.instance.insertSurvey(newPoint);
-      }
+      // Simpan menggunakan DatabaseHelper (aman untuk Android maupun Web Chrome)
+      await DatabaseHelper.instance.insertSurvey(newPoint);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🎉 Data survei berhasil disimpan ke database!'),
+            content: Text('🎉 Data survei berhasil disimpan!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -201,9 +199,6 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Form Survei Lapangan'),
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -345,19 +340,28 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      if (_imageFile != null) ...[
+                      if (_savedImagePath != null) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            _imageFile!,
-                            height: 180,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
+                          child: kIsWeb
+                              ? Image.network(
+                                  _savedImagePath!,
+                                  height: 180,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                )
+                              : (_imageFile != null
+                                  ? Image.file(
+                                      _imageFile!,
+                                      height: 180,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : const SizedBox()),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          p.basename(_imageFile!.path),
+                          p.basename(_savedImagePath!),
                           style: const TextStyle(fontSize: 11, color: Colors.black54),
                         ),
                       ] else
@@ -424,7 +428,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                 ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Colors.green.shade700,
+                  backgroundColor: const Color(0xFF1E40AF), // Royal Blue
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),

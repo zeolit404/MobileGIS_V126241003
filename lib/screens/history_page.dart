@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
@@ -62,7 +63,10 @@ class _HistoryPageState extends State<HistoryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.file(File(fotoPath)),
+            if (kIsWeb)
+              Image.network(fotoPath, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50))
+            else
+              Image.file(File(fotoPath)),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Tutup'),
@@ -73,10 +77,59 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  Widget _buildThumbnail(String? fotoPath) {
+    if (fotoPath == null || fotoPath.isEmpty) {
+      return Container(
+        width: 76,
+        height: 76,
+        color: Colors.grey.shade200,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.no_photography_outlined, color: Colors.black38),
+            SizedBox(height: 2),
+            Text('No Foto', style: TextStyle(fontSize: 10, color: Colors.black38)),
+          ],
+        ),
+      );
+    }
+
+    if (kIsWeb) {
+      return Image.network(
+        fotoPath,
+        width: 76,
+        height: 76,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: 76,
+          height: 76,
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
+        ),
+      );
+    } else {
+      final file = File(fotoPath);
+      if (!file.existsSync()) {
+        return Container(
+          width: 76,
+          height: 76,
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
+        );
+      }
+      return Image.file(
+        file,
+        width: 76,
+        height: 76,
+        fit: BoxFit.cover,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), // Slate 50 lembut
+      backgroundColor: const Color(0xFFF8FAFC),
       body: FutureBuilder<List<SurveyPoint>>(
         future: _futureSurveys,
         builder: (context, snapshot) {
@@ -85,7 +138,21 @@ class _HistoryPageState extends State<HistoryPage> {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Terjadi kesalahan: ${snapshot.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                    const SizedBox(height: 10),
+                    Text('Gagal memuat: ${snapshot.error}', textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    ElevatedButton(onPressed: _refreshData, child: const Text('Coba Lagi')),
+                  ],
+                ),
+              ),
+            );
           }
 
           final data = snapshot.data ?? [];
@@ -112,7 +179,7 @@ class _HistoryPageState extends State<HistoryPage> {
               itemCount: data.length,
               itemBuilder: (context, index) {
                 final point = data[index];
-                final adaFoto = point.fotoPath != null && File(point.fotoPath!).existsSync();
+                final adaFoto = point.fotoPath != null && point.fotoPath!.isNotEmpty;
 
                 return Card(
                   elevation: 2,
@@ -123,36 +190,17 @@ class _HistoryPageState extends State<HistoryPage> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // FITUR IFA: TAMPILKAN FOTO DI RIWAYAT
+                        // Fitur Ifa: Foto di Riwayat
                         GestureDetector(
                           onTap: adaFoto ? () => _lihatFotoPenuh(point.fotoPath!) : null,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(10),
-                            child: adaFoto
-                                ? Image.file(
-                                    File(point.fotoPath!),
-                                    width: 76,
-                                    height: 76,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Container(
-                                    width: 76,
-                                    height: 76,
-                                    color: Colors.grey.shade200,
-                                    child: const Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.no_photography_outlined, color: Colors.black38),
-                                        SizedBox(height: 2),
-                                        Text('No Foto', style: TextStyle(fontSize: 10, color: Colors.black38)),
-                                      ],
-                                    ),
-                                  ),
+                            child: _buildThumbnail(point.fotoPath),
                           ),
                         ),
                         const SizedBox(width: 14),
 
-                        // Informasi Teks Survei
+                        // Detail Teks
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +213,7 @@ class _HistoryPageState extends State<HistoryPage> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFEFF6FF), // Soft Blue
+                                  color: const Color(0xFFEFF6FF),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
