@@ -1,13 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'; // widget dasar Flutter (Scaffold, Button, dll)
-import 'package:geolocator/geolocator.dart'; // untuk tipe data Position (lat & long GPS)
-import 'package:image_picker/image_picker.dart'; // untuk membuka kamera
-import 'package:path/path.dart' as p; // membantu mengolah nama/alamat file
-import 'package:path_provider/path_provider.dart'; // mencari folder penyimpanan di HP
-import '../db/database_helper.dart'; // class untuk simpan data ke database SQLite
-import '../models/survey_point.dart'; // model/struktur data satu titik survei
-import '../services/location_service.dart'; // class untuk mengambil lokasi GPS
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import '../db/database_helper.dart';
+import '../models/survey_point.dart';
+import '../services/location_service.dart';
 
 class SurveyFormPage extends StatefulWidget {
   const SurveyFormPage({super.key});
@@ -19,29 +22,32 @@ class SurveyFormPage extends StatefulWidget {
 class _SurveyFormPageState extends State<SurveyFormPage> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controller Input Teks
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _keteranganController = TextEditingController();
 
-  // Controller Input Koordinat Manual (Bisa Diisi Mandiri)
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lonController = TextEditingController();
 
-  // Mode Pengisian Koordinat: 'gps' atau 'manual'
+  // 1. Tipe Geometri: Point, Line, Polygon
+  String _tipeGeometri = 'Point';
+
+  // 2. Daftar Titik Koordinat Tambahan untuk Line dan Polygon
+  final List<Map<String, double>> _multiPoints = [];
+
   bool _isManualCoordinate = false;
 
-  // Kategori Survei
   String? _selectedKategori = 'Pendidikan';
   final List<String> _kategoriList = [
     'Pendidikan',
     'Tempat Ibadah',
     'Kesehatan',
     'Olahraga',
+    'Jalan & Jalur',
+    'Batas & Lahan',
     'Fasilitas Umum',
     'Lainnya',
   ];
 
-  // Data Lokasi & Foto
   Position? _currentPosition;
   File? _imageFile;
   String? _savedImagePath;
@@ -57,7 +63,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     super.dispose();
   }
 
-  // Mengambil Koordinat GPS Otomatis
+  // Mengambil Koordinat GPS
   Future<void> _ambilLokasi() async {
     setState(() => _isLoadingLocation = true);
     try {
@@ -71,7 +77,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Lokasi GPS berhasil didapatkan!'),
+            content: Text('✅ Lokasi GPS berhasil dikunci!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -90,7 +96,41 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     }
   }
 
-  // Mengambil Foto via Kamera atau Galeri
+  // Tambahkan titik saat ini ke dalam list MultiPoints (untuk Line / Polygon)
+  void _tambahTitikKeList() {
+    final lat = double.tryParse(_latController.text.trim());
+    final lon = double.tryParse(_lonController.text.trim());
+
+    if (lat == null || lon == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Kunci koordinat Latitude & Longitude terlebih dahulu!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _multiPoints.add({'lat': lat, 'lng': lon});
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('📍 Titik #${_multiPoints.length} berhasil ditambahkan!'),
+        backgroundColor: Colors.blueAccent,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _hapusTitikDariList(int index) {
+    setState(() {
+      _multiPoints.removeAt(index);
+    });
+  }
+
+  // Mengambil Foto
   Future<void> _ambilFoto(ImageSource source) async {
     final picker = ImagePicker();
     try {
@@ -104,12 +144,10 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       if (pickedFile == null) return;
 
       if (kIsWeb) {
-        // Pada Web platform (Chrome)
         setState(() {
           _savedImagePath = pickedFile.path;
         });
       } else {
-        // Pada Android / Perangkat Fisik
         final appDir = await getApplicationDocumentsDirectory();
         final fileName = 'SURVEY_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedFile.path)}';
         final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
@@ -123,7 +161,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('📷 Foto berhasil diambil dan disimpan!'),
+            content: Text('📷 Foto berhasil disimpan!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -132,29 +170,44 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Gagal mengambil foto: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text('❌ Gagal mengambil foto: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
   }
 
-  // Menyimpan Data ke SQLite / Memory Store
+  // Menyimpan Data
   Future<void> _simpanSurvei() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    // Ambil nilai koordinat (dari input manual atau GPS)
     final lat = double.tryParse(_latController.text.trim());
     final lon = double.tryParse(_lonController.text.trim());
 
     if (lat == null || lon == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Koordinat Latitude & Longitude wajib diisi dengan benar!'),
+          content: Text('⚠️ Koordinat utama Latitude & Longitude wajib diisi!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Validasi titik untuk Line / Polygon
+    if (_tipeGeometri == 'Line' && _multiPoints.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Garis (Line) membutuhkan minimal 2 titik! Tambahkan titik di bawah.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_tipeGeometri == 'Polygon' && _multiPoints.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Area (Polygon) membutuhkan minimal 3 titik! Tambahkan titik di bawah.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -164,31 +217,29 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     setState(() => _isSaving = true);
 
     try {
-      final newPoint = SurveyPoint(
+      final point = SurveyPoint(
         nama: _namaController.text.trim(),
         kategori: _selectedKategori ?? 'Umum',
-        keterangan: _keteranganController.text.trim().isEmpty
-            ? null
-            : _keteranganController.text.trim(),
+        keterangan: _keteranganController.text.trim().isEmpty ? null : _keteranganController.text.trim(),
         latitude: lat,
         longitude: lon,
         fotoPath: _savedImagePath,
         waktu: DateTime.now().toLocal().toString().split('.')[0],
+        tipeGeometri: _tipeGeometri,
+        koordinatList: _multiPoints.isNotEmpty ? jsonEncode(_multiPoints) : null,
       );
 
-      // Simpan menggunakan DatabaseHelper (aman untuk Android maupun Web Chrome)
-      await DatabaseHelper.instance.insertSurvey(newPoint);
+      await DatabaseHelper.instance.insertSurvey(point);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🎉 Data survei berhasil disimpan!'),
+            content: Text('🎉 Data survei geospasial berhasil disimpan!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
         );
 
-        // Reset form setelah simpan
         _namaController.clear();
         _keteranganController.clear();
         _latController.clear();
@@ -197,6 +248,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
           _currentPosition = null;
           _imageFile = null;
           _savedImagePath = null;
+          _multiPoints.clear();
           _isSaving = false;
         });
       }
@@ -204,10 +256,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Gagal menyimpan data: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text('❌ Gagal menyimpan data: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -216,6 +265,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -223,63 +273,92 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Input Nama Objek / Fasilitas
-              TextFormField(
-                controller: _namaController,
-                decoration: const InputDecoration(
-                  labelText: 'Nama Fasilitas / Objek *',
-                  hintText: 'Contoh: Gedung Rektorat Unhas',
-                  prefixIcon: Icon(Icons.place_outlined),
-                  border: OutlineInputBorder(),
+              // 1. Pemilihan Tipe Geometri (Point, Line, Polygon)
+              Card(
+                elevation: 0,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.shade300),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Nama fasilitas tidak boleh kosong';
-                  }
-                  return null;
-                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.architecture, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Tipe Geometri:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'Point', label: Text('Titik'), icon: Icon(Icons.place, size: 16)),
+                          ButtonSegment(value: 'Line', label: Text('Garis'), icon: Icon(Icons.polyline, size: 16)),
+                          ButtonSegment(value: 'Polygon', label: Text('Area'), icon: Icon(Icons.pentagon_outlined, size: 16)),
+                        ],
+                        selected: {_tipeGeometri},
+                        onSelectionChanged: (newSelection) {
+                          setState(() {
+                            _tipeGeometri = newSelection.first;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 14),
 
-              // 2. Dropdown Kategori
+              // 2. Input Nama & Kategori
+              TextFormField(
+                controller: _namaController,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Objek / Fitur Survei *',
+                  hintText: 'Contoh: Jalan Lingkar Unhas / Gedung Rektorat',
+                  prefixIcon: Icon(Icons.edit_location_alt_outlined),
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                validator: (val) => (val == null || val.trim().isEmpty) ? 'Nama objek tidak boleh kosong' : null,
+              ),
+              const SizedBox(height: 14),
+
               DropdownButtonFormField<String>(
                 initialValue: _selectedKategori,
                 decoration: const InputDecoration(
                   labelText: 'Kategori Fasilitas *',
                   prefixIcon: Icon(Icons.category_outlined),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
-                items: _kategoriList.map((kat) {
-                  return DropdownMenuItem(
-                    value: kat,
-                    child: Text(kat),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() => _selectedKategori = val);
-                },
+                items: _kategoriList.map((kat) => DropdownMenuItem(value: kat, child: Text(kat))).toList(),
+                onChanged: (val) => setState(() => _selectedKategori = val),
               ),
               const SizedBox(height: 14),
 
-              // 3. Input Keterangan / Deskripsi
               TextFormField(
                 controller: _keteranganController,
                 maxLines: 2,
                 decoration: const InputDecoration(
                   labelText: 'Keterangan Tambahan (Opsional)',
-                  hintText: 'Kondisi fisik, fasilitas aksesibilitas, dsb.',
+                  hintText: 'Kondisi fisik, dimensi, perkerasan jalan, dsb.',
                   prefixIcon: Icon(Icons.notes_outlined),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              // 4. Panel Koordinat (Bisa Otomatis GPS atau Diisi Mandiri)
+              // 3. Panel Koordinat (GPS / Input Mandiri)
               Card(
                 elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(14.0),
                   child: Column(
@@ -288,40 +367,32 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Row(
+                          Row(
                             children: [
-                              Icon(Icons.my_location, color: Colors.blueAccent),
-                              SizedBox(width: 8),
+                              const Icon(Icons.my_location, color: Color(0xFF2563EB)),
+                              const SizedBox(width: 8),
                               Text(
-                                'Koordinat Spasial',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                _tipeGeometri == 'Point' ? 'Koordinat Titik Utama' : 'Koordinat Titik Target',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                               ),
                             ],
                           ),
-                          // Switch Mode Input Mandiri
                           Row(
                             children: [
                               Text(
-                                _isManualCoordinate ? 'Input Mandiri' : 'Mode GPS',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _isManualCoordinate ? Colors.blueAccent : Colors.grey.shade700,
-                                ),
+                                _isManualCoordinate ? 'Input Mandiri' : 'GPS',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
                               ),
                               Switch(
                                 value: _isManualCoordinate,
-                                onChanged: (val) {
-                                  setState(() => _isManualCoordinate = val);
-                                },
+                                onChanged: (val) => setState(() => _isManualCoordinate = val),
                               ),
                             ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
 
-                      // Input Mandiri Latitude & Longitude
                       Row(
                         children: [
                           Expanded(
@@ -334,18 +405,10 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                 prefixIcon: const Icon(Icons.navigation_outlined, size: 18),
                                 border: const OutlineInputBorder(),
                                 filled: !_isManualCoordinate,
-                                fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
+                                fillColor: _isManualCoordinate ? Colors.white : Colors.grey.shade100,
                               ),
                               readOnly: !_isManualCoordinate,
-                              validator: (val) {
-                                if (val == null || val.trim().isEmpty) {
-                                  return 'Wajib diisi';
-                                }
-                                if (double.tryParse(val.trim()) == null) {
-                                  return 'Angka tidak valid';
-                                }
-                                return null;
-                              },
+                              validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Angka tidak valid' : null,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -359,62 +422,93 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                 prefixIcon: const Icon(Icons.explore_outlined, size: 18),
                                 border: const OutlineInputBorder(),
                                 filled: !_isManualCoordinate,
-                                fillColor: _isManualCoordinate ? null : Colors.grey.shade100,
+                                fillColor: _isManualCoordinate ? Colors.white : Colors.grey.shade100,
                               ),
                               readOnly: !_isManualCoordinate,
-                              validator: (val) {
-                                if (val == null || val.trim().isEmpty) {
-                                  return 'Wajib diisi';
-                                }
-                                if (double.tryParse(val.trim()) == null) {
-                                  return 'Angka tidak valid';
-                                }
-                                return null;
-                              },
+                              validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Angka tidak valid' : null,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
 
-                      // Tombol Ambil Otomatis dari GPS
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: _isLoadingLocation ? null : _ambilLokasi,
                           icon: _isLoadingLocation
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.gps_fixed),
-                          label: Text(_isLoadingLocation
-                              ? 'Mengambil GPS...'
-                              : 'Kunci Lokasi Otomatis (GPS)'),
+                          label: Text(_isLoadingLocation ? 'Mengambil GPS...' : 'Kunci Lokasi (GPS)'),
                         ),
                       ),
-                      if (_currentPosition != null && !_isManualCoordinate) ...[
-                        const SizedBox(height: 6),
-                        Center(
-                          child: Text(
-                            'Akurasi GPS: ±${_currentPosition!.accuracy.toStringAsFixed(1)} meter',
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                          ),
+
+                      // Jika tipe Line atau Polygon: tombol tambah titik ke list
+                      if (_tipeGeometri != 'Point') ...[
+                        const Divider(height: 24),
+                        Row(
+                          children: [
+                            Text(
+                              'Titik Tersusun (${_multiPoints.length}):',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const Spacer(),
+                            ElevatedButton.icon(
+                              onPressed: _tambahTitikKeList,
+                              icon: const Icon(Icons.add_location_alt, size: 16),
+                              label: const Text('Tambah Titik'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2563EB),
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
+                        if (_multiPoints.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _multiPoints.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1),
+                              itemBuilder: (ctx, i) {
+                                final pt = _multiPoints[i];
+                                return ListTile(
+                                  dense: true,
+                                  visualDensity: VisualDensity.compact,
+                                  leading: CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: Colors.amber.shade700,
+                                    child: Text('${i + 1}', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+                                  ),
+                                  title: Text('${pt['lat']!.toStringAsFixed(6)}, ${pt['lng']!.toStringAsFixed(6)}', style: const TextStyle(fontSize: 12)),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 18),
+                                    onPressed: () => _hapusTitikDariList(i),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              // 5. Panel Foto Lapangan & Geotagging
+              // 4. Panel Foto
               Card(
                 elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(14.0),
                   child: Column(
@@ -424,10 +518,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                         children: [
                           Icon(Icons.camera_alt_outlined, color: Colors.teal),
                           SizedBox(width: 8),
-                          Text(
-                            'Foto Dokumentasi Lapangan',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
+                          Text('Foto Dokumentasi Lapangan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -435,29 +526,14 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: kIsWeb
-                              ? Image.network(
-                                  _savedImagePath!,
-                                  height: 180,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                )
-                              : (_imageFile != null
-                                  ? Image.file(
-                                      _imageFile!,
-                                      height: 180,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : const SizedBox()),
+                              ? Image.network(_savedImagePath!, height: 160, width: double.infinity, fit: BoxFit.cover)
+                              : (_imageFile != null ? Image.file(_imageFile!, height: 160, width: double.infinity, fit: BoxFit.cover) : const SizedBox()),
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          p.basename(_savedImagePath!),
-                          style: const TextStyle(fontSize: 11, color: Colors.black54),
-                        ),
+                        Text(p.basename(_savedImagePath!), style: const TextStyle(fontSize: 11, color: Colors.black54)),
                       ] else
                         Container(
-                          height: 120,
+                          height: 100,
                           decoration: BoxDecoration(
                             color: Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(8),
@@ -467,17 +543,14 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.add_a_photo_outlined, size: 36, color: Colors.black38),
+                                Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black38),
                                 SizedBox(height: 4),
-                                Text(
-                                  'Belum ada foto objek',
-                                  style: TextStyle(fontSize: 12, color: Colors.black45),
-                                ),
+                                Text('Belum ada foto objek', style: TextStyle(fontSize: 12, color: Colors.black45)),
                               ],
                             ),
                           ),
                         ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           Expanded(
@@ -501,29 +574,23 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
 
-              // 6. Tombol Simpan Survei
+              // 5. Tombol Simpan
               ElevatedButton.icon(
                 onPressed: _isSaving ? null : _simpanSurvei,
                 icon: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.save_outlined),
                 label: Text(
-                  _isSaving ? 'Menyimpan Data...' : 'Simpan Data Survei',
+                  _isSaving ? 'Menyimpan Data...' : 'Simpan Fitur Geospasial',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFF1E40AF), // Royal Blue
+                  backgroundColor: const Color(0xFF1E40AF),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ],

@@ -14,10 +14,10 @@ class DatabaseHelper {
   DatabaseHelper._init();
 
   Future<Database?> get database async {
-    if (kIsWeb) return null; // Web tidak memakai sqflite native
+    if (kIsWeb) return null;
     if (_database != null) return _database!;
     try {
-      _database = await _initDB('survey_gis.db');
+      _database = await _initDB('survey_gis_v2.db');
       return _database;
     } catch (e) {
       debugPrint('SQLite native tidak tersedia, beralih ke memory store: $e');
@@ -31,8 +31,9 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -46,18 +47,28 @@ class DatabaseHelper {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         fotoPath TEXT,
-        waktu TEXT NOT NULL
+        waktu TEXT NOT NULL,
+        tipeGeometri TEXT NOT NULL DEFAULT 'Point',
+        koordinatList TEXT
       )
     ''');
   }
 
-  // Menyimpan titik survei baru
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute("ALTER TABLE survey_points ADD COLUMN tipeGeometri TEXT NOT NULL DEFAULT 'Point'");
+        await db.execute("ALTER TABLE survey_points ADD COLUMN koordinatList TEXT");
+      } catch (_) {}
+    }
+  }
+
+  // Menyimpan titik/garis/polygon survei baru
   Future<int> insertSurvey(SurveyPoint point) async {
     final db = await database;
     if (db != null) {
       return await db.insert('survey_points', point.toMap()..remove('id'));
     } else {
-      // Penyimpanan Fallback untuk Chrome Web / Windows Preview
       final assignedId = _nextId++;
       final pointWithId = SurveyPoint(
         id: assignedId,
@@ -68,6 +79,8 @@ class DatabaseHelper {
         longitude: point.longitude,
         fotoPath: point.fotoPath,
         waktu: point.waktu,
+        tipeGeometri: point.tipeGeometri,
+        koordinatList: point.koordinatList,
       );
       _memoryStore.insert(0, pointWithId);
       return assignedId;
@@ -84,7 +97,6 @@ class DatabaseHelper {
       );
       return result.map((json) => SurveyPoint.fromMap(json)).toList();
     } else {
-      // Mengambil dari memory store jika dijalankan di Web Chrome
       return List<SurveyPoint>.from(_memoryStore);
     }
   }
@@ -104,7 +116,6 @@ class DatabaseHelper {
     }
   }
 
-  // Menutup database
   Future<void> close() async {
     final db = await database;
     if (db != null) {

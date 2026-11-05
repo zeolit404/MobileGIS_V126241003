@@ -12,7 +12,7 @@ import '../models/survey_point.dart';
 import '../services/location_service.dart';
 
 enum MapLayerType {
-  rbiIndonesia, // Peta Dasar RBI dari BIG (Default tugas Arief)
+  rbiIndonesia, // Peta Dasar RBI dari BIG (Default)
   googleSatellite,
   openStreetMap,
 }
@@ -32,13 +32,8 @@ class _MapPageState extends State<MapPage> {
   // Koordinat Kampus Unhas Tamalanrea
   static const LatLng _defaultCenter = LatLng(-5.1357, 119.4886);
 
-  // Fitur Arief: Default Peta Dasar RBI (BIG)
   MapLayerType _currentLayer = MapLayerType.rbiIndonesia;
-
-  // Fitur Database: Menampilkan titik survei tersimpan
   List<SurveyPoint> _savedPoints = [];
-
-  // Fitur Raehan: Titik yang sedang dipilih untuk popup di ATAS
   SurveyPoint? _selectedPoint;
 
   @override
@@ -91,7 +86,6 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _cycleLayer() {
-    // Simpan posisi dan zoom kamera saat ini agar tidak melompat/reset
     final currentCenter = _mapController.camera.center;
     final currentZoom = _mapController.camera.zoom;
 
@@ -105,39 +99,45 @@ class _MapPageState extends State<MapPage> {
       }
     });
 
-    // Pastikan kamera tetap berada di titik yang sama persis
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _mapController.move(currentCenter, currentZoom);
+    });
+  }
+
+  // Pilih titik tanpa mengubah zoom dan posisi kamera
+  void _pilihTitik(SurveyPoint point) {
+    setState(() {
+      _selectedPoint = point;
     });
   }
 
   Widget _buildPopupImage(String? fotoPath) {
     if (fotoPath == null || fotoPath.isEmpty) {
       return Container(
-        width: 54,
-        height: 54,
+        width: 58,
+        height: 58,
         decoration: BoxDecoration(
           color: Colors.amber.shade700,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.place, color: Colors.white, size: 28),
+        child: const Icon(Icons.place, color: Colors.white, size: 30),
       );
     }
 
     if (kIsWeb) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: Image.network(
           fotoPath,
-          width: 54,
-          height: 54,
+          width: 58,
+          height: 58,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
-            width: 54,
-            height: 54,
+            width: 58,
+            height: 58,
             decoration: BoxDecoration(
               color: Colors.amber.shade700,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.broken_image, color: Colors.white),
           ),
@@ -147,21 +147,21 @@ class _MapPageState extends State<MapPage> {
       final file = File(fotoPath);
       if (!file.existsSync()) {
         return Container(
-          width: 54,
-          height: 54,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
             color: Colors.amber.shade700,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.place, color: Colors.white, size: 28),
+          child: const Icon(Icons.place, color: Colors.white, size: 30),
         );
       }
       return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: Image.file(
           file,
-          width: 54,
-          height: 54,
+          width: 58,
+          height: 58,
           fit: BoxFit.cover,
         ),
       );
@@ -176,12 +176,10 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Menentukan URL Tile sesuai layer
     String tileUrl;
     String layerName;
     switch (_currentLayer) {
       case MapLayerType.rbiIndonesia:
-        // Peta Dasar RBI BIG (format ArcGIS REST: {z}/{y}/{x})
         tileUrl = 'https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/tile/{z}/{y}/{x}';
         layerName = 'Peta Dasar RBI (BIG)';
         break;
@@ -195,8 +193,36 @@ class _MapPageState extends State<MapPage> {
         break;
     }
 
+    // 1. Polylines (Garis dari survei bertipe Line)
+    final polylines = <Polyline>[];
+    // 2. Polygons (Area dari survei bertipe Polygon)
+    final polygons = <Polygon>[];
+
+    for (final p in _savedPoints) {
+      final coords = p.parsedCoordinates.map((e) => LatLng(e['lat']!, e['lng']!)).toList();
+      if (p.tipeGeometri == 'Line' && coords.length >= 2) {
+        polylines.add(
+          Polyline(
+            points: coords,
+            strokeWidth: 4.0,
+            color: Colors.blueAccent.shade700,
+          ),
+        );
+      } else if (p.tipeGeometri == 'Polygon' && coords.length >= 3) {
+        polygons.add(
+          Polygon(
+            points: coords,
+            color: Colors.amber.withValues(alpha: 0.35),
+            borderColor: Colors.amber.shade900,
+            borderStrokeWidth: 2.5,
+          ),
+        );
+      }
+    }
+
+    // 3. Markers
     final markers = <Marker>[
-      // 1. Marker Referensi Kampus Unhas
+      // Marker Referensi Kampus Unhas
       Marker(
         point: _defaultCenter,
         width: 36,
@@ -204,22 +230,23 @@ class _MapPageState extends State<MapPage> {
         child: const Icon(Icons.school, color: Color(0xFF1E293B), size: 30),
       ),
 
-      // 2. Fitur Raehan: Titik-titik survei dari database berwarna KUNING EMAS
+      // Marker Titik-titik Hasil Survei (Kuning Emas)
       ..._savedPoints.map((point) {
         final pos = LatLng(point.latitude, point.longitude);
         final isSelected = _selectedPoint?.id == point.id;
+        IconData geomIcon = Icons.location_on;
+        if (point.tipeGeometri == 'Line') geomIcon = Icons.polyline;
+        if (point.tipeGeometri == 'Polygon') geomIcon = Icons.pentagon_outlined;
+
         return Marker(
           point: pos,
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           child: GestureDetector(
-            onTap: () {
-              setState(() => _selectedPoint = point);
-              _mapController.move(pos, 16.5);
-            },
+            onTap: () => _pilihTitik(point), // Tidak reset zoom / melompat
             child: Container(
               decoration: BoxDecoration(
-                color: isSelected ? Colors.amberAccent : Colors.amber.shade700, // TITIK KUNING
+                color: isSelected ? Colors.amberAccent : Colors.amber.shade700,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: Colors.white,
@@ -229,13 +256,13 @@ class _MapPageState extends State<MapPage> {
                   BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
                 ],
               ),
-              child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+              child: Icon(geomIcon, color: Colors.white, size: 24),
             ),
           ),
         );
       }),
 
-      // 3. Marker Lokasi Pengguna (GPS)
+      // Marker Posisi Pengguna (GPS)
       if (_currentLatLng != null)
         Marker(
           point: _currentLatLng!,
@@ -261,7 +288,7 @@ class _MapPageState extends State<MapPage> {
             options: MapOptions(
               initialCenter: _currentLatLng ?? _defaultCenter,
               initialZoom: 16,
-              onTap: (_, p) {
+              onTap: (tapPosition, point) {
                 if (_selectedPoint != null) {
                   setState(() => _selectedPoint = null);
                 }
@@ -273,65 +300,94 @@ class _MapPageState extends State<MapPage> {
                 urlTemplate: tileUrl,
                 userAgentPackageName: 'com.praktekmobilegis.praktek_mobile_gis',
               ),
+              if (polygons.isNotEmpty) PolygonLayer(polygons: polygons),
+              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),
             ],
           ),
 
-          // FITUR RAEHAN: POPUP DI BAGIAN ATAS LAYAR (TOP SHEET CARD) - AMAN DARI CRASH WEB
+          // POPUP ATAS YANG LEBIH RAPI & ELEGAN (Material 3 Card)
           if (_selectedPoint != null)
             Positioned(
-              top: 14,
+              top: 16,
               left: 14,
               right: 14,
               child: Card(
-                elevation: 6,
-                color: const Color(0xFF0F172A), // Dark Navy yang bersih
+                elevation: 8,
+                shadowColor: Colors.black45,
+                color: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Colors.amber, width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Colors.amber.shade700, width: 2),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Preview Foto (Aman di Web & Android)
                       _buildPopupImage(_selectedPoint!.fotoPath),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              _selectedPoint!.nama,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.white,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _selectedPoint!.nama,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    _selectedPoint!.tipeGeometri,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 3),
                             Text(
                               'Kategori: ${_selectedPoint!.kategori}',
-                              style: const TextStyle(fontSize: 12, color: Colors.amber),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              '(${_selectedPoint!.latitude.toStringAsFixed(5)}, ${_selectedPoint!.longitude.toStringAsFixed(5)})',
-                              style: const TextStyle(fontSize: 11, color: Colors.white70),
+                              'Koordinat: ${_selectedPoint!.latitude.toStringAsFixed(5)}, ${_selectedPoint!.longitude.toStringAsFixed(5)}',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                             ),
-                            if (_selectedPoint!.keterangan != null &&
-                                _selectedPoint!.keterangan!.isNotEmpty)
-                              Text(
-                                _selectedPoint!.keterangan!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11, color: Colors.white60),
+                            if (_selectedPoint!.keterangan != null && _selectedPoint!.keterangan!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  _selectedPoint!.keterangan!,
+                                  style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey.shade600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                           ],
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                        icon: const Icon(Icons.close, color: Colors.black45, size: 20),
                         onPressed: () => setState(() => _selectedPoint = null),
                       ),
                     ],
@@ -343,10 +399,17 @@ class _MapPageState extends State<MapPage> {
           // Tombol Kontrol Peta Samping Kanan
           Positioned(
             right: 14,
-            bottom: 50,
+            bottom: 30,
             child: Column(
               children: [
-                // Tombol Switcher Layer (RBI / Satelit / OSM)
+                FloatingActionButton.small(
+                  heroTag: 'btnRefreshSaved',
+                  onPressed: _loadSavedPoints,
+                  backgroundColor: Colors.white,
+                  tooltip: 'Segarkan Titik Survei',
+                  child: const Icon(Icons.refresh, color: Colors.black87),
+                ),
+                const SizedBox(height: 6),
                 FloatingActionButton.small(
                   heroTag: 'btnCycleLayer',
                   onPressed: _cycleLayer,
@@ -373,7 +436,7 @@ class _MapPageState extends State<MapPage> {
                 FloatingActionButton(
                   heroTag: 'btnRecenter',
                   onPressed: _recenterLocation,
-                  backgroundColor: const Color(0xFF2563EB), // Royal Blue
+                  backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
                   child: const Icon(Icons.my_location),
                 ),
