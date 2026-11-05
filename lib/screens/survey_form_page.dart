@@ -266,28 +266,37 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                   side: BorderSide(color: Colors.grey.shade300),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: Row(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.architecture, color: Color(0xFF2563EB)),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Tipe Geometri:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const Spacer(),
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'Point', label: Text('Titik'), icon: Icon(Icons.place, size: 16)),
-                          ButtonSegment(value: 'Line', label: Text('Garis'), icon: Icon(Icons.polyline, size: 16)),
-                          ButtonSegment(value: 'Polygon', label: Text('Area'), icon: Icon(Icons.pentagon_outlined, size: 16)),
+                      const Row(
+                        children: [
+                          Icon(Icons.architecture, color: Color(0xFF2563EB), size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            'Tipe Geometri Spasial *',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                          ),
                         ],
-                        selected: {_tipeGeometri},
-                        onSelectionChanged: (newSelection) {
-                          setState(() {
-                            _tipeGeometri = newSelection.first;
-                          });
-                        },
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<String>(
+                          showSelectedIcon: true,
+                          segments: const [
+                            ButtonSegment(value: 'Point', label: Text('Titik'), icon: Icon(Icons.place, size: 16)),
+                            ButtonSegment(value: 'Line', label: Text('Garis'), icon: Icon(Icons.polyline, size: 16)),
+                            ButtonSegment(value: 'Polygon', label: Text('Area'), icon: Icon(Icons.pentagon_outlined, size: 16)),
+                          ],
+                          selected: {_tipeGeometri},
+                          onSelectionChanged: (newSelection) {
+                            setState(() {
+                              _tipeGeometri = newSelection.first;
+                            });
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -361,17 +370,38 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               ),
                             ],
                           ),
-                          Row(
-                            children: [
-                              Text(
-                                _isManualCoordinate ? 'Input Mandiri' : 'GPS',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => setState(() => _isManualCoordinate = !_isManualCoordinate),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _isManualCoordinate ? Colors.blue.shade50 : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _isManualCoordinate ? Colors.blue.shade400 : Colors.grey.shade300,
+                                ),
                               ),
-                              Switch(
-                                value: _isManualCoordinate,
-                                onChanged: (val) => setState(() => _isManualCoordinate = val),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _isManualCoordinate ? Icons.edit_note : Icons.gps_fixed,
+                                    size: 14,
+                                    color: _isManualCoordinate ? const Color(0xFF1E40AF) : Colors.black87,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _isManualCoordinate ? 'Input Mandiri' : 'Sensor GPS',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _isManualCoordinate ? const Color(0xFF1E40AF) : Colors.black87,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ],
                       ),

@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../services/connectivity_service.dart';
 import '../services/weather_service.dart';
 import 'history_page.dart';
 import 'map_page.dart';
@@ -15,11 +17,34 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   WeatherData? _weather;
+  bool _isOnline = true;
+  StreamSubscription<bool>? _connectivitySub;
+  Timer? _weatherTimer;
 
   @override
   void initState() {
     super.initState();
     _fetchWeather();
+    // Refresh cuaca secara periodik setiap 3 menit
+    _weatherTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (mounted) _fetchWeather();
+    });
+
+    // Mulai pemantauan konektivitas internet real-time
+    ConnectivityService.instance.start();
+    _isOnline = ConnectivityService.instance.isOnline;
+    _connectivitySub = ConnectivityService.instance.statusStream.listen((online) {
+      if (mounted) {
+        setState(() => _isOnline = online);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _weatherTimer?.cancel();
+    _connectivitySub?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchWeather() async {
@@ -61,7 +86,7 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         actions: [
-          // 1. Status Cuaca Makassar Khusus pada Laman Survei
+          // 1. Status Cuaca Makassar Real-Time Khusus pada Laman Survei
           if (_currentIndex == 1)
             Padding(
               padding: const EdgeInsets.only(right: 14),
@@ -96,7 +121,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-          // 2. Status Mode Online / Offline Khusus pada Laman Peta
+          // 2. Status Mode Online / Offline Real-Time Khusus pada Laman Peta
           if (_currentIndex == 0)
             Padding(
               padding: const EdgeInsets.only(right: 14),
@@ -106,7 +131,10 @@ class _HomePageState extends State<HomePage> {
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.greenAccent.shade400, width: 1),
+                    border: Border.all(
+                      color: _isOnline ? Colors.greenAccent.shade400 : Colors.redAccent.shade200,
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -114,18 +142,18 @@ class _HomePageState extends State<HomePage> {
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.greenAccent,
+                        decoration: BoxDecoration(
+                          color: _isOnline ? Colors.greenAccent : Colors.redAccent,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Text(
-                        'Mode Online (RBI)',
+                      Text(
+                        _isOnline ? 'Mode Online (RBI)' : 'Mode Offline',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: _isOnline ? Colors.white : Colors.red.shade100,
                         ),
                       ),
                     ],
@@ -143,6 +171,9 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             _currentIndex = index;
           });
+          if (index == 1) {
+            _fetchWeather(); // Segarkan cuaca saat tab survei dibuka
+          }
         },
         destinations: const [
           NavigationDestination(

@@ -84,6 +84,10 @@ class _MapPageState extends State<MapPage> {
     _mapController.move(_mapController.camera.center, currentZoom - 1);
   }
 
+  void _resetToNorth() {
+    _mapController.rotate(0.0);
+  }
+
   void _cycleLayer() {
     final currentCenter = _mapController.camera.center;
     final currentZoom = _mapController.camera.zoom;
@@ -377,6 +381,24 @@ class _MapPageState extends State<MapPage> {
             bottom: 30,
             child: Column(
               children: [
+                // Tombol Reset Arah Utara (North Arrow)
+                FloatingActionButton.small(
+                  heroTag: 'btnResetNorth',
+                  onPressed: _resetToNorth,
+                  backgroundColor: Colors.white,
+                  tooltip: 'Arahkan Peta ke Utara',
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.navigation, color: Colors.redAccent, size: 16),
+                      Text(
+                        'U',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
                 FloatingActionButton.small(
                   heroTag: 'btnRefreshSaved',
                   onPressed: _loadSavedPoints,
