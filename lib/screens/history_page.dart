@@ -65,97 +65,117 @@ class _HistoryPageState extends State<HistoryPage> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.download_for_offline, color: Color(0xFF2563EB), size: 28),
-                const SizedBox(width: 10),
-                Text(
-                  'Ekspor Data Survei (${data.length} Record)',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.download_for_offline, color: Color(0xFF2563EB), size: 28),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Ekspor Data Survei (${data.length} Record)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Semua format ekspor kini dilengkapi kolom & data Foto Geotagging lapangan:',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              const Divider(height: 24),
+
+              // Opsi 1: PDF Laporan Resmi
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEE2E2),
+                  child: Icon(Icons.picture_as_pdf, color: Colors.redAccent),
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Pilih format file hasil ekstraksi data spasial untuk laporan:',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            const Divider(height: 24),
-
-            // Opsi 1: PDF Laporan Resmi
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFFEE2E2),
-                child: Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+                title: const Text('Format PDF (Laporan Resmi + Galeri Geotag)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: const Text('Tabel ber-kop Unhas + Lampiran Foto Geotagging siap cetak', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ExportService.exportToPdf(data);
+                },
               ),
-              title: const Text('Format PDF (Laporan Akademik Resmi)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: const Text('Tabel rapi ber-kop Universitas Hasanuddin siap cetak/simpan', style: TextStyle(fontSize: 11)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await ExportService.exportToPdf(data);
-              },
-            ),
 
-            // Opsi 2: Excel (XLSX)
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFDCFCE7),
-                child: Icon(Icons.table_chart, color: Colors.green),
+              // Opsi 2: Excel (XLSX)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFDCFCE7),
+                  child: Icon(Icons.table_chart, color: Colors.green),
+                ),
+                title: const Text('Format Excel (.xlsx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: const Text('Spreadsheet dengan kolom Foto/Geotagging, Koordinat, & Kategori', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final res = await ExportService.exportToExcel(data);
+                  if (mounted && res != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
+                  }
+                },
               ),
-              title: const Text('Format Excel (.xlsx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: const Text('Spreadsheet Microsoft Excel untuk pengolahan tabular lanjutan', style: TextStyle(fontSize: 11)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final res = await ExportService.exportToExcel(data);
-                if (mounted && res != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
-                }
-              },
-            ),
 
-            // Opsi 3: CSV (Standar GIS / QGIS / ArcGIS)
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE0E7FF),
-                child: Icon(Icons.text_snippet, color: Color(0xFF4F46E5)),
+              // Opsi 3: GeoJSON (Standar GIS Vektor)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEF3C7),
+                  child: Icon(Icons.public, color: Color(0xFFD97706)),
+                ),
+                title: const Text('Format GeoJSON (.geojson)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: const Text('Format Vektor SIG Standar untuk QGIS, ArcGIS, & WebGIS', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final res = await ExportService.exportToGeoJson(data);
+                  if (mounted && res != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
+                  }
+                },
               ),
-              title: const Text('Format CSV (Standar SIG / QGIS)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: const Text('Kompatibel langsung diimpor ke software QGIS & ArcGIS', style: TextStyle(fontSize: 11)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final res = await ExportService.exportToCsv(data);
-                if (mounted && res != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
-                }
-              },
-            ),
 
-            // Opsi 4: Word (DOCX / DOC)
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFEFF6FF),
-                child: Icon(Icons.description, color: Color(0xFF2563EB)),
+              // Opsi 4: CSV (Standar GIS / Tabular)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE0E7FF),
+                  child: Icon(Icons.text_snippet, color: Color(0xFF4F46E5)),
+                ),
+                title: const Text('Format CSV (Standar SIG / QGIS)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: const Text('Format CSV dengan kolom Foto & Geotagging koordinat', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final res = await ExportService.exportToCsv(data);
+                  if (mounted && res != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
+                  }
+                },
               ),
-              title: const Text('Format Word (.doc / .docx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: const Text('Dokumen tabel Microsoft Word yang dapat diedit langsung', style: TextStyle(fontSize: 11)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final res = await ExportService.exportToDocx(data);
-                if (mounted && res != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
-                }
-              },
-            ),
-          ],
+
+              // Opsi 5: Word (DOCX / DOC)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEFF6FF),
+                  child: Icon(Icons.description, color: Color(0xFF2563EB)),
+                ),
+                title: const Text('Format Word (.doc / .docx)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                subtitle: const Text('Dokumen MS Word dengan tabel data & preview foto langsung', style: TextStyle(fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final res = await ExportService.exportToDocx(data);
+                  if (mounted && res != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $res')));
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
