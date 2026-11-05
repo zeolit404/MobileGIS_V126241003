@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/location_service.dart';
+import '../utils/coordinate_converter.dart';
 import '../utils/platform_image_helper.dart';
 
 enum MapLayerType {
@@ -291,87 +292,101 @@ class _MapPageState extends State<MapPage> {
               top: 16,
               left: 14,
               right: 14,
-              child: Card(
-                elevation: 8,
-                shadowColor: Colors.black45,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: Colors.amber.shade700, width: 2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildPopupImage(_selectedPoint!.fotoPath),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
+              child: Builder(
+                builder: (context) {
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  final utm = CoordinateConverter.latLonToUtm(
+                    _selectedPoint!.latitude,
+                    _selectedPoint!.longitude,
+                  );
+
+                  return Card(
+                    elevation: 8,
+                    shadowColor: Colors.black45,
+                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.amber.shade700, width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildPopupImage(_selectedPoint!.fotoPath),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    _selectedPoint!.nama,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      color: Color(0xFF0F172A),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _selectedPoint!.nama,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.shade100,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _selectedPoint!.tipeGeometri,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.amber.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.shade100,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    _selectedPoint!.tipeGeometri,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.amber.shade900,
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Kategori: ${_selectedPoint!.kategori}',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'WGS84: ${_selectedPoint!.latitude.toStringAsFixed(5)}, ${_selectedPoint!.longitude.toStringAsFixed(5)}',
+                                  style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade300 : Colors.grey.shade700),
+                                ),
+                                Text(
+                                  'UTM ${utm.zoneString}: X=${utm.easting.toStringAsFixed(0)}m, Y=${utm.northing.toStringAsFixed(0)}m',
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF)),
+                                ),
+                                if (_selectedPoint!.keterangan != null && _selectedPoint!.keterangan!.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      _selectedPoint!.keterangan!,
+                                      style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                ),
                               ],
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              'Kategori: ${_selectedPoint!.kategori}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Koordinat: ${_selectedPoint!.latitude.toStringAsFixed(5)}, ${_selectedPoint!.longitude.toStringAsFixed(5)}',
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                            ),
-                            if (_selectedPoint!.keterangan != null && _selectedPoint!.keterangan!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(
-                                  _selectedPoint!.keterangan!,
-                                  style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey.shade600),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                        ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, color: isDark ? Colors.white54 : Colors.black45, size: 20),
+                            onPressed: () => setState(() => _selectedPoint = null),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.black45, size: 20),
-                        onPressed: () => setState(() => _selectedPoint = null),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             ),
 

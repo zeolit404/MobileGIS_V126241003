@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/location_service.dart';
+import '../utils/coordinate_converter.dart';
 import '../utils/platform_image_helper.dart';
 
 class SurveyFormPage extends StatefulWidget {
@@ -21,8 +22,18 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _keteranganController = TextEditingController();
 
+  // Koordinat WGS 84 (Derajat Desimal)
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lonController = TextEditingController();
+
+  // Koordinat UTM (Proyeksi Metrik)
+  final TextEditingController _eastingController = TextEditingController();
+  final TextEditingController _northingController = TextEditingController();
+  int _utmZone = 50; // Default Zona 50 (Makassar / Sulawesi Selatan)
+  String _utmHemisphere = 'S'; // 'S' untuk Belahan Bumi Selatan, 'N' untuk Utara
+
+  // Sistem Koordinat Aktif: 'WGS84' atau 'UTM'
+  String _coordinateSystem = 'WGS84';
 
   // 1. Tipe Geometri: Point, Line, Polygon
   String _tipeGeometri = 'Point';
@@ -54,7 +65,42 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     _keteranganController.dispose();
     _latController.dispose();
     _lonController.dispose();
+    _eastingController.dispose();
+    _northingController.dispose();
     super.dispose();
+  }
+
+  // Sinkronisasi otomatis dari WGS 84 ke UTM
+  void _syncFromWgs84() {
+    final lat = double.tryParse(_latController.text.trim());
+    final lon = double.tryParse(_lonController.text.trim());
+    if (lat != null && lon != null) {
+      final utm = CoordinateConverter.latLonToUtm(lat, lon);
+      setState(() {
+        _eastingController.text = utm.easting.toStringAsFixed(1);
+        _northingController.text = utm.northing.toStringAsFixed(1);
+        _utmZone = utm.zone;
+        _utmHemisphere = utm.hemisphere;
+      });
+    }
+  }
+
+  // Sinkronisasi otomatis dari UTM ke WGS 84
+  void _syncFromUtm() {
+    final easting = double.tryParse(_eastingController.text.trim());
+    final northing = double.tryParse(_northingController.text.trim());
+    if (easting != null && northing != null) {
+      final latlon = CoordinateConverter.utmToLatLon(
+        easting: easting,
+        northing: northing,
+        zone: _utmZone,
+        hemisphere: _utmHemisphere,
+      );
+      setState(() {
+        _latController.text = latlon['lat']!.toStringAsFixed(6);
+        _lonController.text = latlon['lon']!.toStringAsFixed(6);
+      });
+    }
   }
 
   // Mengambil Koordinat GPS
@@ -62,17 +108,24 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     setState(() => _isLoadingLocation = true);
     try {
       final position = await LocationService.getCurrentPosition();
+      final utm = CoordinateConverter.latLonToUtm(position.latitude, position.longitude);
+
       setState(() {
         _latController.text = position.latitude.toStringAsFixed(6);
         _lonController.text = position.longitude.toStringAsFixed(6);
+        _eastingController.text = utm.easting.toStringAsFixed(1);
+        _northingController.text = utm.northing.toStringAsFixed(1);
+        _utmZone = utm.zone;
+        _utmHemisphere = utm.hemisphere;
         _isLoadingLocation = false;
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Lokasi GPS berhasil dikunci!'),
+          SnackBar(
+            content: Text('✅ GPS Terkunci: WGS84 (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}) | UTM ${utm.zoneString}'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -91,13 +144,17 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
 
   // Tambahkan titik saat ini ke dalam list MultiPoints (untuk Line / Polygon)
   void _tambahTitikKeList() {
+    if (_coordinateSystem == 'UTM') {
+      _syncFromUtm();
+    }
+
     final lat = double.tryParse(_latController.text.trim());
     final lon = double.tryParse(_lonController.text.trim());
 
     if (lat == null || lon == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Kunci koordinat Latitude & Longitude terlebih dahulu!'),
+          content: Text('⚠️ Kunci koordinat terlebih dahulu sebelum menambah titik!'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -147,9 +204,8 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('📷 Foto berhasil dimuat!'),
+            content: Text('📸 Foto lapangan berhasil disimpan ke survei!'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -162,9 +218,14 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     }
   }
 
-  // Menyimpan Data
+  // Simpan data ke Database
   Future<void> _simpanSurvei() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Pastikan koordinat tersinkronisasi jika pengguna dalam mode UTM
+    if (_coordinateSystem == 'UTM') {
+      _syncFromUtm();
+    }
 
     final lat = double.tryParse(_latController.text.trim());
     final lon = double.tryParse(_lonController.text.trim());
@@ -172,7 +233,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     if (lat == null || lon == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Koordinat utama Latitude & Longitude wajib diisi!'),
+          content: Text('⚠️ Koordinat utama wajib diisi!'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -230,6 +291,8 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
         _keteranganController.clear();
         _latController.clear();
         _lonController.clear();
+        _eastingController.clear();
+        _northingController.clear();
         setState(() {
           _savedImagePath = null;
           _multiPoints.clear();
@@ -248,8 +311,13 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardTheme.color ?? (isDark ? const Color(0xFF1E293B) : Colors.white);
+    final inputFill = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -260,23 +328,27 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               // 1. Pemilihan Tipe Geometri (Point, Line, Polygon)
               Card(
                 elevation: 0,
-                color: Colors.white,
+                color: cardColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.shade300),
+                  side: BorderSide(color: borderColor),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.architecture, color: Color(0xFF2563EB), size: 18),
-                          SizedBox(width: 8),
+                          const Icon(Icons.architecture, color: Color(0xFF2563EB), size: 18),
+                          const SizedBox(width: 8),
                           Text(
                             'Tipe Geometri Spasial *',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                         ],
                       ),
@@ -307,13 +379,13 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               // 2. Input Nama & Kategori
               TextFormField(
                 controller: _namaController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Nama Objek / Fitur Survei *',
                   hintText: 'Contoh: Jalan Lingkar Unhas / Gedung Rektorat',
-                  prefixIcon: Icon(Icons.edit_location_alt_outlined),
-                  border: OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.edit_location_alt_outlined),
+                  border: const OutlineInputBorder(),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: inputFill,
                 ),
                 validator: (val) => (val == null || val.trim().isEmpty) ? 'Nama objek tidak boleh kosong' : null,
               ),
@@ -321,12 +393,12 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
 
               DropdownButtonFormField<String>(
                 initialValue: _selectedKategori,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Kategori Fasilitas *',
-                  prefixIcon: Icon(Icons.category_outlined),
-                  border: OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.category_outlined),
+                  border: const OutlineInputBorder(),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: inputFill,
                 ),
                 items: _kategoriList.map((kat) => DropdownMenuItem(value: kat, child: Text(kat))).toList(),
                 onChanged: (val) => setState(() => _selectedKategori = val),
@@ -336,27 +408,31 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               TextFormField(
                 controller: _keteranganController,
                 maxLines: 2,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Keterangan Tambahan (Opsional)',
                   hintText: 'Kondisi fisik, dimensi, perkerasan jalan, dsb.',
-                  prefixIcon: Icon(Icons.notes_outlined),
-                  border: OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.notes_outlined),
+                  border: const OutlineInputBorder(),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: inputFill,
                 ),
               ),
               const SizedBox(height: 16),
 
-              // 3. Panel Koordinat (GPS / Input Mandiri)
+              // 3. Panel Koordinat (Pilihan Sistem Koordinat: WGS 84 & UTM)
               Card(
-                elevation: 2,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+                color: cardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: borderColor),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(14.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header Koordinat + Switcher GPS / Manual
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -366,7 +442,11 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               const SizedBox(width: 8),
                               Text(
                                 _tipeGeometri == 'Point' ? 'Koordinat Titik Utama' : 'Koordinat Titik Target',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
                               ),
                             ],
                           ),
@@ -376,10 +456,12 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: _isManualCoordinate ? Colors.blue.shade50 : Colors.grey.shade100,
+                                color: _isManualCoordinate
+                                    ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.5) : Colors.blue.shade50)
+                                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: _isManualCoordinate ? Colors.blue.shade400 : Colors.grey.shade300,
+                                  color: _isManualCoordinate ? Colors.blue.shade400 : borderColor,
                                 ),
                               ),
                               child: Row(
@@ -388,7 +470,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                   Icon(
                                     _isManualCoordinate ? Icons.edit_note : Icons.gps_fixed,
                                     size: 14,
-                                    color: _isManualCoordinate ? const Color(0xFF1E40AF) : Colors.black87,
+                                    color: _isManualCoordinate ? const Color(0xFF38BDF8) : (isDark ? Colors.white70 : Colors.black87),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -396,7 +478,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      color: _isManualCoordinate ? const Color(0xFF1E40AF) : Colors.black87,
+                                      color: _isManualCoordinate ? const Color(0xFF38BDF8) : (isDark ? Colors.white70 : Colors.black87),
                                     ),
                                   ),
                                 ],
@@ -405,47 +487,254 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
 
+                      // MENU SISTEM KOORDINAT (WGS 84 vs UTM)
                       Row(
                         children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _latController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                              decoration: InputDecoration(
-                                labelText: 'Latitude *',
-                                hintText: '-5.135700',
-                                prefixIcon: const Icon(Icons.navigation_outlined, size: 18),
-                                border: const OutlineInputBorder(),
-                                filled: !_isManualCoordinate,
-                                fillColor: _isManualCoordinate ? Colors.white : Colors.grey.shade100,
-                              ),
-                              readOnly: !_isManualCoordinate,
-                              validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Angka tidak valid' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _lonController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                              decoration: InputDecoration(
-                                labelText: 'Longitude *',
-                                hintText: '119.488600',
-                                prefixIcon: const Icon(Icons.explore_outlined, size: 18),
-                                border: const OutlineInputBorder(),
-                                filled: !_isManualCoordinate,
-                                fillColor: _isManualCoordinate ? Colors.white : Colors.grey.shade100,
-                              ),
-                              readOnly: !_isManualCoordinate,
-                              validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Angka tidak valid' : null,
+                          const Icon(Icons.public, color: Color(0xFF2563EB), size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Sistem Koordinat Acuan:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<String>(
+                          showSelectedIcon: true,
+                          segments: const [
+                            ButtonSegment(
+                              value: 'WGS84',
+                              label: Text('WGS 84 (Geografis)'),
+                              icon: Icon(Icons.language, size: 16),
+                            ),
+                            ButtonSegment(
+                              value: 'UTM',
+                              label: Text('UTM (Proyeksi Metrik)'),
+                              icon: Icon(Icons.straighten, size: 16),
+                            ),
+                          ],
+                          selected: {_coordinateSystem},
+                          onSelectionChanged: (newSelection) {
+                            setState(() {
+                              _coordinateSystem = newSelection.first;
+                              if (_coordinateSystem == 'UTM') {
+                                _syncFromWgs84();
+                              } else {
+                                _syncFromUtm();
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 14),
 
+                      // A. FORM INPUT JIKA MODE WGS 84
+                      if (_coordinateSystem == 'WGS84') ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _latController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: 'Latitude (°) *',
+                                  hintText: '-5.135700',
+                                  prefixIcon: const Icon(Icons.navigation_outlined, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: !_isManualCoordinate,
+                                  fillColor: _isManualCoordinate ? inputFill : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+                                ),
+                                readOnly: !_isManualCoordinate,
+                                onChanged: (_) => _syncFromWgs84(),
+                                validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Latitude tidak valid' : null,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _lonController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: 'Longitude (°) *',
+                                  hintText: '119.488600',
+                                  prefixIcon: const Icon(Icons.explore_outlined, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: !_isManualCoordinate,
+                                  fillColor: _isManualCoordinate ? inputFill : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+                                ),
+                                readOnly: !_isManualCoordinate,
+                                onChanged: (_) => _syncFromWgs84(),
+                                validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Longitude tidak valid' : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_eastingController.text.isNotEmpty && _northingController.text.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade300),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sync_alt, size: 15, color: Color(0xFF2563EB)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Ekuivalen UTM: Zona $_utmZone$_utmHemisphere | X: ${_eastingController.text} m, Y: ${_northingController.text} m',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+
+                      // B. FORM INPUT JIKA MODE UTM (Proyeksi Metrik)
+                      if (_coordinateSystem == 'UTM') ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _eastingController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  labelText: 'Easting (X / Timur) *',
+                                  hintText: '779412.5',
+                                  suffixText: 'm',
+                                  prefixIcon: const Icon(Icons.east, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: !_isManualCoordinate,
+                                  fillColor: _isManualCoordinate ? inputFill : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+                                ),
+                                readOnly: !_isManualCoordinate,
+                                onChanged: (_) => _syncFromUtm(),
+                                validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Easting wajib angka' : null,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _northingController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  labelText: 'Northing (Y / Utara) *',
+                                  hintText: '9434850.2',
+                                  suffixText: 'm',
+                                  prefixIcon: const Icon(Icons.north, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: !_isManualCoordinate,
+                                  fillColor: _isManualCoordinate ? inputFill : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+                                ),
+                                readOnly: !_isManualCoordinate,
+                                onChanged: (_) => _syncFromUtm(),
+                                validator: (val) => (val == null || double.tryParse(val.trim()) == null) ? 'Northing wajib angka' : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            // Pilihan Zona UTM (Default 50 untuk Sulsel)
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: _utmZone,
+                                decoration: InputDecoration(
+                                  labelText: 'Zona UTM',
+                                  prefixIcon: const Icon(Icons.grid_on, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: inputFill,
+                                ),
+                                items: List.generate(60, (i) => i + 1)
+                                    .map((z) => DropdownMenuItem(value: z, child: Text('Zona $z${z == 50 ? ' (Makassar/Sulsel)' : ''}')))
+                                    .toList(),
+                                onChanged: _isManualCoordinate
+                                    ? (val) {
+                                        if (val != null) {
+                                          setState(() => _utmZone = val);
+                                          _syncFromUtm();
+                                        }
+                                      }
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Pilihan Belahan Bumi (S / N)
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _utmHemisphere,
+                                decoration: InputDecoration(
+                                  labelText: 'Belahan Bumi',
+                                  prefixIcon: const Icon(Icons.map, size: 18),
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: inputFill,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(value: 'S', child: Text('S (Selatan/Sulsel)')),
+                                  DropdownMenuItem(value: 'N', child: Text('N (Utara)')),
+                                ],
+                                onChanged: _isManualCoordinate
+                                    ? (val) {
+                                        if (val != null) {
+                                          setState(() => _utmHemisphere = val);
+                                          _syncFromUtm();
+                                        }
+                                      }
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_latController.text.isNotEmpty && _lonController.text.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.purple.shade900.withValues(alpha: 0.3) : const Color(0xFFFAF5FF),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.purple.shade300),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sync_alt, size: 15, color: Color(0xFF9333EA)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Ekuivalen WGS 84: Lat ${_latController.text}°, Lon ${_lonController.text}°',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? const Color(0xFFE9D5FF) : const Color(0xFF6B21A8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                      const SizedBox(height: 12),
+
+                      // Tombol Kunci Lokasi (GPS)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -453,7 +742,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                           icon: _isLoadingLocation
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.gps_fixed),
-                          label: Text(_isLoadingLocation ? 'Mengambil GPS...' : 'Kunci Lokasi (GPS)'),
+                          label: Text(_isLoadingLocation ? 'Mengambil GPS Presisi...' : 'Kunci Lokasi (Sensor GPS)'),
                         ),
                       ),
 
@@ -464,7 +753,11 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                           children: [
                             Text(
                               'Titik Tersusun (${_multiPoints.length}):',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                             const Spacer(),
                             ElevatedButton.icon(
@@ -482,9 +775,9 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                           const SizedBox(height: 8),
                           Container(
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
+                              color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade50,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
+                              border: Border.all(color: borderColor),
                             ),
                             child: ListView.separated(
                               shrinkWrap: true,
@@ -493,6 +786,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (ctx, i) {
                                 final pt = _multiPoints[i];
+                                final utm = CoordinateConverter.latLonToUtm(pt['lat']!, pt['lng']!);
                                 return ListTile(
                                   dense: true,
                                   visualDensity: VisualDensity.compact,
@@ -502,6 +796,7 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                                     child: Text('${i + 1}', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
                                   title: Text('${pt['lat']!.toStringAsFixed(6)}, ${pt['lng']!.toStringAsFixed(6)}', style: const TextStyle(fontSize: 12)),
+                                  subtitle: Text('UTM ${utm.zoneString}: X=${utm.easting.toStringAsFixed(0)}m, Y=${utm.northing.toStringAsFixed(0)}m', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 18),
                                     onPressed: () => _hapusTitikDariList(i),
@@ -518,21 +813,31 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               ),
               const SizedBox(height: 16),
 
-              // 4. Panel Foto
+              // 4. Panel Foto Dokumentasi Lapangan
               Card(
-                elevation: 2,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+                color: cardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: borderColor),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(14.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.camera_alt_outlined, color: Colors.teal),
-                          SizedBox(width: 8),
-                          Text('Foto Dokumentasi Lapangan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          const Icon(Icons.camera_alt_outlined, color: Color(0xFF2563EB)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Foto Dokumentasi Lapangan',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -546,27 +851,31 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                             fit: BoxFit.cover,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        const Text('Foto dokumen berhasil dipilih', style: TextStyle(fontSize: 11, color: Colors.green)),
-                      ] else
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () => setState(() => _savedImagePath = null),
+                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                          label: const Text('Hapus Foto', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                        ),
+                      ] else ...[
                         Container(
-                          height: 100,
+                          height: 110,
+                          width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
+                            color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade300),
+                            border: Border.all(color: borderColor, style: BorderStyle.solid),
                           ),
-                          child: const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black38),
-                                SizedBox(height: 4),
-                                Text('Belum ada foto objek', style: TextStyle(fontSize: 12, color: Colors.black45)),
-                              ],
-                            ),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_a_photo_outlined, size: 36, color: Colors.grey),
+                              SizedBox(height: 6),
+                              Text('Belum ada foto yang diambil', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
                           ),
                         ),
+                      ],
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -597,19 +906,20 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
               ElevatedButton.icon(
                 onPressed: _isSaving ? null : _simpanSurvei,
                 icon: _isSaving
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.save_outlined),
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.save),
                 label: Text(
-                  _isSaving ? 'Menyimpan Data...' : 'Simpan Fitur Geospasial',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  _isSaving ? 'Menyimpan ke Database...' : 'Simpan Data Survei',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFF1E40AF),
+                  backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
+              const SizedBox(height: 30),
             ],
           ),
         ),
