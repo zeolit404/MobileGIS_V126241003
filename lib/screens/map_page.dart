@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/location_service.dart';
+import '../utils/platform_image_helper.dart';
 
 enum MapLayerType {
   rbiIndonesia, // Peta Dasar RBI dari BIG (Default)
@@ -124,48 +123,24 @@ class _MapPageState extends State<MapPage> {
       );
     }
 
-    if (kIsWeb) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.network(
-          fotoPath,
-          width: 58,
-          height: 58,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: Colors.amber.shade700,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.broken_image, color: Colors.white),
-          ),
-        ),
-      );
-    } else {
-      final file = File(fotoPath);
-      if (!file.existsSync()) {
-        return Container(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: PlatformImageHelper.buildImage(
+        fotoPath,
+        width: 58,
+        height: 58,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
           width: 58,
           height: 58,
           decoration: BoxDecoration(
             color: Colors.amber.shade700,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.place, color: Colors.white, size: 30),
-        );
-      }
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.file(
-          file,
-          width: 58,
-          height: 58,
-          fit: BoxFit.cover,
+          child: const Icon(Icons.broken_image, color: Colors.white),
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override

@@ -1,15 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/survey_point.dart';
+import '../utils/file_saver.dart';
 
 class ExportService {
   // 1. EKSPOR KE CSV (Standar GIS / Spreadsheets)
@@ -39,19 +38,10 @@ class ExportService {
     }
     final csvResult = buffer.toString();
 
-    if (kIsWeb) {
-      // Pada Web, trigger download via printing/share helper
-      await Printing.sharePdf(
-        bytes: utf8.encode(csvResult),
-        filename: 'Data_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.csv',
-      );
-      return 'File CSV berhasil diunduh';
-    } else {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/Data_Survei_${DateTime.now().millisecondsSinceEpoch}.csv');
-      await file.writeAsString(csvResult);
-      return file.path;
-    }
+    return await FileSaver.saveFile(
+      'Data_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.csv',
+      Uint8List.fromList(utf8.encode(csvResult)),
+    );
   }
 
   // 2. EKSPOR KE EXCEL (XLSX)
@@ -90,18 +80,10 @@ class ExportService {
     final bytes = excel.encode();
     if (bytes == null) return null;
 
-    if (kIsWeb) {
-      await Printing.sharePdf(
-        bytes: Uint8List.fromList(bytes),
-        filename: 'Data_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.xlsx',
-      );
-      return 'File Excel berhasil diunduh';
-    } else {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/Data_Survei_${DateTime.now().millisecondsSinceEpoch}.xlsx');
-      await file.writeAsBytes(bytes);
-      return file.path;
-    }
+    return await FileSaver.saveFile(
+      'Data_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+      Uint8List.fromList(bytes),
+    );
   }
 
   // 3. EKSPOR KE PDF (Laporan Resmi Akademik Ber-Kop)
@@ -231,17 +213,9 @@ class ExportService {
 
     final docxContent = buffer.toString();
 
-    if (kIsWeb) {
-      await Printing.sharePdf(
-        bytes: utf8.encode(docxContent),
-        filename: 'Laporan_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.doc',
-      );
-      return 'File Dokumen Word berhasil diunduh';
-    } else {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/Laporan_Survei_${DateTime.now().millisecondsSinceEpoch}.doc');
-      await file.writeAsString(docxContent);
-      return file.path;
-    }
+    return await FileSaver.saveFile(
+      'Laporan_Survei_MobileGIS_${DateTime.now().millisecondsSinceEpoch}.doc',
+      Uint8List.fromList(utf8.encode(docxContent)),
+    );
   }
 }

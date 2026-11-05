@@ -1,16 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/location_service.dart';
+import '../utils/platform_image_helper.dart';
 
 class SurveyFormPage extends StatefulWidget {
   const SurveyFormPage({super.key});
@@ -48,8 +44,6 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     'Lainnya',
   ];
 
-  Position? _currentPosition;
-  File? _imageFile;
   String? _savedImagePath;
   bool _isLoadingLocation = false;
   bool _isSaving = false;
@@ -69,7 +63,6 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
     try {
       final position = await LocationService.getCurrentPosition();
       setState(() {
-        _currentPosition = position;
         _latController.text = position.latitude.toStringAsFixed(6);
         _lonController.text = position.longitude.toStringAsFixed(6);
         _isLoadingLocation = false;
@@ -143,25 +136,18 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
 
       if (pickedFile == null) return;
 
-      if (kIsWeb) {
-        setState(() {
-          _savedImagePath = pickedFile.path;
-        });
-      } else {
-        final appDir = await getApplicationDocumentsDirectory();
-        final fileName = 'SURVEY_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedFile.path)}';
-        final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
+      final bytes = await pickedFile.readAsBytes();
+      final base64String = base64Encode(bytes);
+      final dataUri = 'data:image/jpeg;base64,$base64String';
 
-        setState(() {
-          _imageFile = savedImage;
-          _savedImagePath = savedImage.path;
-        });
-      }
+      setState(() {
+        _savedImagePath = dataUri;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('📷 Foto berhasil disimpan!'),
+            content: Text('📷 Foto berhasil dimuat!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -245,8 +231,6 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
         _latController.clear();
         _lonController.clear();
         setState(() {
-          _currentPosition = null;
-          _imageFile = null;
           _savedImagePath = null;
           _multiPoints.clear();
           _isSaving = false;
@@ -525,12 +509,15 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                       if (_savedImagePath != null) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: kIsWeb
-                              ? Image.network(_savedImagePath!, height: 160, width: double.infinity, fit: BoxFit.cover)
-                              : (_imageFile != null ? Image.file(_imageFile!, height: 160, width: double.infinity, fit: BoxFit.cover) : const SizedBox()),
+                          child: PlatformImageHelper.buildImage(
+                            _savedImagePath!,
+                            height: 160,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                         const SizedBox(height: 6),
-                        Text(p.basename(_savedImagePath!), style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                        const Text('Foto dokumen berhasil dipilih', style: TextStyle(fontSize: 11, color: Colors.green)),
                       ] else
                         Container(
                           height: 100,

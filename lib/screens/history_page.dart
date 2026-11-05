@@ -1,10 +1,8 @@
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/export_service.dart';
+import '../utils/platform_image_helper.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -167,13 +165,19 @@ class _HistoryPageState extends State<HistoryPage> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (kIsWeb)
-              Image.network(fotoPath, errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50))
-            else
-              Image.file(File(fotoPath)),
+            PlatformImageHelper.buildImage(
+              fotoPath,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => const Padding(
+                padding: EdgeInsets.all(30),
+                child: Icon(Icons.broken_image, size: 50, color: Colors.black38),
+              ),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Tutup'),
@@ -201,36 +205,18 @@ class _HistoryPageState extends State<HistoryPage> {
       );
     }
 
-    if (kIsWeb) {
-      return Image.network(
-        fotoPath,
+    return PlatformImageHelper.buildImage(
+      fotoPath,
+      width: 76,
+      height: 76,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Container(
         width: 76,
         height: 76,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          width: 76,
-          height: 76,
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
-        ),
-      );
-    } else {
-      final file = File(fotoPath);
-      if (!file.existsSync()) {
-        return Container(
-          width: 76,
-          height: 76,
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
-        );
-      }
-      return Image.file(
-        file,
-        width: 76,
-        height: 76,
-        fit: BoxFit.cover,
-      );
-    }
+        color: Colors.grey.shade200,
+        child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
+      ),
+    );
   }
 
   @override
