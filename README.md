@@ -14,40 +14,48 @@ Repositori ini berisi kode sumber aplikasi **Praktek Mobile GIS** berbasis **Flu
 
 ---
 
-## 🚀 Fitur Aplikasi (Pertemuan 5 – 12)
+## 🚀 Fitur Aplikasi Lengkap
 
-Aplikasi ini mengintegrasikan seluruh komponen inti Mobile GIS dari sisi antarmuka, pemetaan digital, sensor GNSS, akuisisi foto, hingga penyimpanan database lokal:
+Aplikasi ini mengintegrasikan seluruh komponen inti Mobile GIS dari sisi antarmuka, pemetaan digital, sensor GNSS, akuisisi foto, hingga penyimpanan database lokal dan ekspor data multi-format:
 
-### 1. 🧭 Antarmuka & Navigasi (Pertemuan 5 - 6)
-* Mengadopsi **Material 3 UI** dengan tema warna hijau khas geospasial.
-* Menggunakan **Bottom Navigation Bar 3 Tab**:
-  * 🗺️ **Peta**: Visualisasi peta digital dan pemantauan posisi pengguna.
-  * 📝 **Survei**: Form digital akuisisi titik fasilitas lapangan.
-  * 📜 **Riwayat**: Riwayat data survei tersimpan.
+### 1. 🧭 Antarmuka & Navigasi Modern (Material 3)
+* Mengadopsi **Material 3 UI** bertema warna profesional *Dark Slate Blue* & aksen *Royal Blue/Teal*.
+* **Bottom Navigation Bar 3 Tab**:
+  * 🗺️ **Peta RBI**: Visualisasi peta digital, kontrol layer, dan popup data spasial.
+  * 📝 **Survei**: Form digital akuisisi titik, garis, dan area fasilitas lapangan.
+  * 📜 **Riwayat**: Tabel rekapitulasi data survei dan ekspor multi-format.
 
-### 2. 🗺️ Integrasi Peta Digital Multi-Layer (Pertemuan 7)
+### 2. 🗺️ Integrasi Peta Digital Multi-Layer & Peta Dasar BIG
 * Menggunakan pustaka `flutter_map` dan `latlong2`.
-* **Multi-Basemap Switcher**:
+* **Multi-Basemap Switcher (Dengan Pengunci Posisi Kamera)**:
+  * **Peta Dasar RBI (BIG)**: Peta dasar Rupabumi Indonesia resmi dari Badan Informasi Geospasial (ArcGIS REST Tile).
+  * **Google Satellite**: Citra satelit resolusi tinggi.
   * **OpenStreetMap (OSM)**: Peta vektor jalan publik.
-  * **Google Satellite**: Citra satelit resolusi tinggi dari Google Maps Tile Server.
-* **Marker Layer**:
-  * Marker referensi statis di kawasan Kampus Universitas Hasanuddin Tamalanrea (`-5.1357, 119.4886`).
-  * Kontrol floating button untuk *Zoom In*, *Zoom Out*, dan *Re-center*.
-  * Tampilan *Head-Up Display* (HUD) koordinat Latitude & Longitude real-time.
+* **Visualisasi Geometri Lengkap**:
+  * Render **Titik (Point)** dengan marker interaktif.
+  * Render **Garis (Line)** untuk jalan, jalur survei, atau sungai.
+  * Render **Area (Polygon)** berarsir untuk batas lahan atau blok fasilitas.
+* Kontrol navigasi: *Zoom In*, *Zoom Out*, *Re-center GPS*, dan status *Mode Online/Offline*.
 
-### 3. 📍 Integrasi GPS & Lokasi Real-Time (Pertemuan 8)
-* Menggunakan pustaka `geolocator` untuk komunikasi dengan sensor GNSS/GPS perangkat.
+### 3. 📍 Sensor GNSS & Input Koordinat Fleksibel
+* Pustaka `geolocator` untuk komunikasi dengan sensor GNSS/GPS perangkat.
 * Modul service terisolasi (`LocationService`) untuk validasi layanan lokasi dan izin akses (`ACCESS_FINE_LOCATION`).
-* **Live Position Tracking**: Marker biru lokasi pengguna yang otomatis bergerak mengikuti posisi surveyor secara real-time.
+* **Live Position Tracking**: Marker live posisi surveyor di lapangan.
+* **Input Mandiri / Kunci GPS**: Surveyor dapat mengunci koordinat otomatis via satelit atau memasukkan angka Latitude & Longitude secara mandiri.
 
-### 4. 📋 Form Survei Lapangan & Foto Geotagging (Pertemuan 9 - 11)
-* Input terstruktur: Nama Objek/Fasilitas, Kategori (Pendidikan, Ibadah, Kesehatan, Olahraga, Fasilitas Umum), dan Catatan Keterangan.
-* Tombol **"Ambil Lokasi Sekarang"** untuk *lock* koordinat GPS dan nilai akurasi (meter).
-* Integrasi kamera dan galeri menggunakan `image_picker` dan `path_provider` untuk mendokumentasikan foto objek langsung di lapangan.
+### 4. 🌦️ Widget Cuaca Real-Time Lokasi Survei
+* Integrasi REST API Open-Meteo untuk membaca suhu dan kondisi cuaca terkini di Kota Makassar (Kampus Unhas Tamalanrea).
+* Tersemat langsung pada header Laman Survei untuk memantau kelayakan cuaca operasional lapangan.
 
-### 5. 💾 Database Lokal SQLite (Pertemuan 12)
-* Penyimpanan *offline-first* menggunakan `sqflite`.
-* Tabel data `survey_points` untuk menyimpan seluruh record survei: ID, nama, kategori, deskripsi, koordinat (lat/long), alamat path foto, dan timestamp akuisisi.
+### 5. 📊 Ekspor Data Lapangan Multi-Format (PDF, Excel, CSV, Word)
+* **Format PDF**: Laporan resmi ber-Kop Dokumen Program Studi D4 PJ-SIG Universitas Hasanuddin siap cetak/arsip.
+* **Format Excel (.xlsx)**: Spreadsheet terstruktur untuk pengolahan analisis tabular lanjutan di Microsoft Excel.
+* **Format CSV**: Standar industri geospasial yang kompatibel langsung diimpor ke software **QGIS** dan **ArcGIS**.
+* **Format Word (.doc / .docx)**: Format dokumen Microsoft Word yang dapat diedit langsung.
+
+### 6. 💾 Database Hybrid & Cross-Platform Safe Image
+* Penyimpanan *offline-first* dengan dual storage: SQLite (`sqflite`) pada perangkat Android native dan in-memory store saat dijalankan pada web/desktop.
+* Penanganan gambar anti-crash (`_Namespace`) dengan kompilasi kondisional (`platform_image_helper.dart` & `file_saver.dart`) yang mendukung Base64 dan file lokal.
 
 ---
 
@@ -56,19 +64,20 @@ Aplikasi ini mengintegrasikan seluruh komponen inti Mobile GIS dari sisi antarmu
 | Komponen | Teknologi / Package |
 |---|---|
 | **Framework** | Flutter (Dart SDK 3.13+) |
-| **Peta Digital** | `flutter_map: ^7.0.2` & `latlong2: ^0.9.1` |
+| **Peta Digital** | `flutter_map: ^8.3.2` & `latlong2: ^0.10.1` |
 | **GPS / GNSS** | `geolocator: ^14.0.0` |
 | **Kamera & Geotag** | `image_picker: ^1.1.2` |
 | **Database Lokal** | `sqflite: ^2.3.3+1` & `path_provider: ^2.1.4` |
-| **HTTP / Server** | `http: ^1.2.2` |
-| **Target Platform** | Android (Min SDK 26, Target SDK 34/36) |
+| **Ekspor Data** | `pdf: ^3.12.0`, `excel: ^4.0.6`, `csv: ^8.0.0`, `printing: ^5.14.3` |
+| **Cuaca / HTTP** | `http: ^1.2.2` (Open-Meteo REST API) |
+| **Target Platform** | Android (Min SDK 26, Target SDK 34/36) & Web |
 
 ---
 
 ## 📥 Download Aplikasi (APK Siap Install)
 
 File APK rilis terbaru siap pakai dapat diunduh langsung melalui menu **GitHub Releases**:
-👉 **[Download APK via GitHub Releases (v1.1.0)](https://github.com/zeolit404/MobileGIS_V126241003/releases/latest)**
+👉 **[Download APK via GitHub Releases](https://github.com/zeolit404/MobileGIS_V126241003/releases/latest)**
 
 Pilih file asset **`app-arm64-v8a-release.apk`** untuk di-install pada smartphone Android.
 
@@ -81,16 +90,21 @@ praktek_mobile_gis/
 ├── android/                   # Konfigurasi native Android & AndroidManifest.xml (Permissions)
 ├── lib/
 │   ├── db/
-│   │   └── database_helper.dart      # Singleton SQLite Database Manager
+│   │   └── database_helper.dart      # Hybrid SQLite & Memory Store Database Manager
 │   ├── models/
-│   │   └── survey_point.dart         # Data Model Titik Survei
+│   │   └── survey_point.dart         # Data Model Titik, Garis, & Poligon Survei
 │   ├── screens/
-│   │   ├── home_page.dart            # Navigasi Bottom Bar (Peta, Survei, Riwayat)
-│   │   ├── map_page.dart             # Peta OSM, Google Satelit, & Live GPS Marker
-│   │   ├── survey_form_page.dart     # Form Survei, GPS Capture & Kamera
-│   │   └── history_page.dart         # Tampilan Riwayat Survei
+│   │   ├── home_page.dart            # Navigasi Bottom Bar, Header Cuaca, & Mode Peta
+│   │   ├── map_page.dart             # Peta Dasar RBI, Google Satelit, OSM & Geometri Layer
+│   │   ├── survey_form_page.dart     # Form Geometri, Input Mandiri, GPS & Akuisisi Foto
+│   │   └── history_page.dart         # Tabel Rekap Survei & Tombol Menu Ekspor
 │   ├── services/
-│   │   └── location_service.dart     # Service Pengambil Koordinat & Stream GPS
+│   │   ├── export_service.dart       # Generator Ekspor PDF, Excel, CSV, & Word
+│   │   ├── location_service.dart     # Service Pengambil Koordinat & Stream GPS
+│   │   └── weather_service.dart      # Integrasi REST API Cuaca Makassar
+│   ├── utils/
+│   │   ├── file_saver.dart           # Cross-platform File Saver (Web & Mobile)
+│   │   └── platform_image_helper.dart# Cross-platform Safe Image Handler
 │   └── main.dart                     # Entry point aplikasi & tema Material 3
 ├── pubspec.yaml               # Deklarasi dependencies Flutter
 └── README.md                  # Dokumentasi resmi proyek
