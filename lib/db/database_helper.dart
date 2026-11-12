@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import '../models/digitization_result.dart';
 import '../models/survey_point.dart';
 
 class DatabaseHelper {
@@ -9,7 +10,9 @@ class DatabaseHelper {
 
   // Fallback penyimpanan data di memori jika dijalankan di Web (Chrome) / Desktop Windows
   final List<SurveyPoint> _memoryStore = [];
+  final List<DigitizationResult> _digitizationMemoryStore = [];
   int _nextId = 1;
+  int _nextDigitizationId = 1;
 
   DatabaseHelper._init();
 
@@ -17,7 +20,7 @@ class DatabaseHelper {
     if (kIsWeb) return null;
     if (_database != null) return _database!;
     try {
-      _database = await _initDB('survey_gis_v2.db');
+      _database = await _initDB('survey_gis_v3.db');
       return _database;
     } catch (e) {
       debugPrint('SQLite native tidak tersedia, beralih ke memory store: $e');
@@ -31,7 +34,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -52,15 +55,38 @@ class DatabaseHelper {
         koordinatList TEXT
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS digitization_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_path TEXT NOT NULL,
+        distance_meters REAL NOT NULL,
+        vertex_count INTEGER NOT NULL,
+        waktu TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      try {
-        await db.execute("ALTER TABLE survey_points ADD COLUMN tipeGeometri TEXT NOT NULL DEFAULT 'Point'");
-        await db.execute("ALTER TABLE survey_points ADD COLUMN koordinatList TEXT");
-      } catch (_) {}
+    final cols = await db.rawQuery('PRAGMA table_info(survey_points)');
+    final names = cols.map((c) => c['name'] as String).toSet();
+
+    if (!names.contains('tipeGeometri')) {
+      await db.execute("ALTER TABLE survey_points ADD COLUMN tipeGeometri TEXT NOT NULL DEFAULT 'Point'");
     }
+    if (!names.contains('koordinatList')) {
+      await db.execute("ALTER TABLE survey_points ADD COLUMN koordinatList TEXT");
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS digitization_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_path TEXT NOT NULL,
+        distance_meters REAL NOT NULL,
+        vertex_count INTEGER NOT NULL,
+        waktu TEXT NOT NULL
+      )
+    ''');
   }
 
   // Menyimpan titik/garis/polygon survei baru
@@ -87,6 +113,9 @@ class DatabaseHelper {
     }
   }
 
+  // Alias kompatibilitas
+  Future<int> insertSurveyPoint(SurveyPoint point) => insertSurvey(point);
+
   // Mengambil seluruh data survei tersimpan
   Future<List<SurveyPoint>> getAllSurveys() async {
     final db = await database;
@@ -101,7 +130,10 @@ class DatabaseHelper {
     }
   }
 
-  // Menghapus data survei berdasarkan ID
+  // Alias kompatibilitas
+  Future<List<SurveyPoint>> getAllSurveyPoints() => getAllSurveys();
+
+  // Menghapus titik survei berdasarkan ID
   Future<int> deleteSurvey(int id) async {
     final db = await database;
     if (db != null) {
@@ -116,10 +148,44 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> close() async {
+  // Menghapus semua titik survei
+  Future<int> deleteAllSurveys() async {
     final db = await database;
     if (db != null) {
-      await db.close();
+      return await db.delete('survey_points');
+    } else {
+      final count = _memoryStore.length;
+      _memoryStore.clear();
+      return count;
+    }
+  }
+
+  // ---------------- Digitization Results (Line/Polygon screenshot store) ----------------
+  Future<int> insertDigitizationResult(DigitizationResult result) async {
+    final db = await database;
+    if (db != null) {
+      return await db.insert('digitization_results', result.toMap()..remove('id'));
+    } else {
+      final id = _nextDigitizationId++;
+      final withId = DigitizationResult(
+        id: id,
+        imagePath: result.imagePath,
+        distanceMeters: result.distanceMeters,
+        vertexCount: result.vertexCount,
+        waktu: result.waktu,
+      );
+      _digitizationMemoryStore.insert(0, withId);
+      return id;
+    }
+  }
+
+  Future<List<DigitizationResult>> getAllDigitizationResults() async {
+    final db = await database;
+    if (db != null) {
+      final result = await db.query('digitization_results', orderBy: 'id DESC');
+      return result.map((json) => DigitizationResult.fromMap(json)).toList();
+    } else {
+      return List<DigitizationResult>.from(_digitizationMemoryStore);
     }
   }
 }

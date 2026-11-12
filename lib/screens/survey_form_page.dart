@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../db/database_helper.dart';
 import '../models/survey_point.dart';
 import '../services/location_service.dart';
 import '../utils/coordinate_converter.dart';
 import '../utils/platform_image_helper.dart';
+import 'polygon_draw_page.dart';
 
 class SurveyFormPage extends StatefulWidget {
   const SurveyFormPage({super.key});
@@ -139,6 +141,65 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
           ),
         );
       }
+    }
+  }
+
+  // Buka kanvas peta interaktif untuk menentukan titik lokasi, garis, atau poligon
+  Future<void> _bukaKanvasDigitasi() async {
+    final curLat = double.tryParse(_latController.text.trim()) ?? -5.1357;
+    final curLon = double.tryParse(_lonController.text.trim()) ?? 119.4886;
+    final center = LatLng(curLat, curLon);
+
+    final SurveyGeometryType geomType;
+    if (_tipeGeometri == 'Line') {
+      geomType = SurveyGeometryType.line;
+    } else if (_tipeGeometri == 'Polygon') {
+      geomType = SurveyGeometryType.polygon;
+    } else {
+      geomType = SurveyGeometryType.point;
+    }
+
+    final initialPts = geomType == SurveyGeometryType.point
+        ? (_latController.text.isNotEmpty && _lonController.text.isNotEmpty ? [center] : <LatLng>[])
+        : _multiPoints.map((p) => LatLng(p['lat']!, p['lng']!)).toList();
+
+    final result = await Navigator.of(context).push<List<LatLng>>(
+      MaterialPageRoute(
+        builder: (_) => PolygonDrawPage(
+          initialCenter: center,
+          initialPoints: initialPts,
+          geometryType: geomType,
+        ),
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && mounted) {
+      setState(() {
+        if (geomType == SurveyGeometryType.point) {
+          final pt = result.first;
+          _latController.text = pt.latitude.toStringAsFixed(6);
+          _lonController.text = pt.longitude.toStringAsFixed(6);
+          _syncFromWgs84();
+        } else {
+          _multiPoints.clear();
+          for (final pt in result) {
+            _multiPoints.add({'lat': pt.latitude, 'lng': pt.longitude});
+          }
+          _latController.text = result.first.latitude.toStringAsFixed(6);
+          _lonController.text = result.first.longitude.toStringAsFixed(6);
+          _syncFromWgs84();
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            geomType == SurveyGeometryType.point
+                ? '✅ Titik lokasi dipilih dari kanvas peta: (${result.first.latitude.toStringAsFixed(5)}, ${result.first.longitude.toStringAsFixed(5)})'
+                : '✅ Berhasil mengambil ${result.length} titik simpul dari kanvas peta.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
@@ -734,21 +795,49 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                       ],
                       const SizedBox(height: 12),
 
-                      // Tombol Kunci Lokasi (GPS)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _isLoadingLocation ? null : _ambilLokasi,
-                          icon: _isLoadingLocation
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.gps_fixed),
-                          label: Text(_isLoadingLocation ? 'Mengambil GPS Presisi...' : 'Kunci Lokasi (Sensor GPS)'),
-                        ),
+                      // Pilihan Input Lokasi: Sensor GPS (Lapangan) atau Kanvas Peta (Langsung dari Peta)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoadingLocation ? null : _ambilLokasi,
+                              icon: _isLoadingLocation
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.gps_fixed, size: 18),
+                              label: Text(
+                                _isLoadingLocation ? 'Mencari GPS...' : 'Kunci GPS',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _bukaKanvasDigitasi,
+                              icon: Icon(
+                                _tipeGeometri == 'Point' ? Icons.touch_app_rounded : Icons.gesture_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                _tipeGeometri == 'Point'
+                                    ? 'Pilih di Peta'
+                                    : (_tipeGeometri == 'Line' ? 'Digitasi Garis' : 'Digitasi Poligon'),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _tipeGeometri == 'Point'
+                                    ? const Color(0xFF2563EB)
+                                    : const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
 
-                      // Jika tipe Line atau Polygon: tombol tambah titik ke list
+                      // Jika tipe Line atau Polygon: rekapitulasi titik tersusun
                       if (_tipeGeometri != 'Point') ...[
-                        const Divider(height: 24),
+                        const Divider(height: 20),
                         Row(
                           children: [
                             Text(
@@ -760,10 +849,16 @@ class _SurveyFormPageState extends State<SurveyFormPage> {
                               ),
                             ),
                             const Spacer(),
+                            TextButton.icon(
+                              onPressed: _bukaKanvasDigitasi,
+                              icon: const Icon(Icons.edit, size: 15),
+                              label: const Text('Edit di Peta', style: TextStyle(fontSize: 12)),
+                            ),
+                            const SizedBox(width: 4),
                             ElevatedButton.icon(
                               onPressed: _tambahTitikKeList,
                               icon: const Icon(Icons.add_location_alt, size: 16),
-                              label: const Text('Tambah Titik'),
+                              label: const Text('Tambah Manual'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF2563EB),
                                 foregroundColor: Colors.white,

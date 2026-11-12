@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Mockup & Design Renders
+assets/ss_figcraft_*.png
+*.figcraft

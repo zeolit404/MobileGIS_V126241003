@@ -5,6 +5,7 @@ import '../services/theme_manager.dart';
 import '../services/weather_service.dart';
 import 'history_page.dart';
 import 'map_page.dart';
+import 'photo_history_page.dart';
 import 'survey_form_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -48,8 +49,10 @@ class _HomePageState extends State<HomePage> {
         return const MapPage();
       case 1:
         return const SurveyFormPage();
-      default:
+      case 2:
         return const HistoryPage();
+      default:
+        return const PhotoHistoryPage();
     }
   }
 
@@ -183,6 +186,11 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history, color: Colors.blueAccent),
             label: 'Riwayat',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.photo_library_outlined),
+            selectedIcon: Icon(Icons.photo_library, color: Colors.blueAccent),
+            label: 'Foto',
           ),
         ],
       ),
