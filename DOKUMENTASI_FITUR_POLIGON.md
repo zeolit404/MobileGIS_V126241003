@@ -11,17 +11,25 @@
 
 ---
 
-## 1. Desain Antarmuka & Tangkapan Layar (FigCraft Showcase)
+## 1. Rancang Bangun Antarmuka & Interaksi Pengguna (UI/UX)
 
-Fitur poligon dirancang untuk memberikan pengalaman akuisisi data spasial yang presisi dan intuitif di perangkat mobile.
+Fitur poligon dirancang untuk memberikan pengalaman akuisisi data spasial yang presisi dan terstruktur di perangkat mobile, terbagi dalam tiga antarmuka utama:
 
-### 📱 Tiga Tampilan Utama Antarmuka:
+1. **Kanvas Digitasi Interaktif (`polygon_draw_page.dart`):**
+   - **Kanvas Spasial:** Menampilkan peta interaktif yang merespons ketukan layar (*tap*) surveyor untuk membentuk simpul poligon.
+   - **Garis & Penutup Loop Otomatis:** Setiap simpul terhubung secara sekuensial dengan garis panduan (*Polyline*) dan menghubungkan titik akhir kembali ke simpul awal.
+   - **Pengukuran Luas Real-Time:** Menghitung luas area secara otomatis menggunakan kalkulasi geodesik saat simpul ditambahkan/dihapus.
+   - **Kontrol Tindakan:** Tombol *Batal Simpul* (`removeLast()`), *Reset Kanvas*, dan tombol *Selesai* yang aktif hanya saat syarat minimum ($\ge 3$ simpul) terpenuhi.
 
-| 1. Kanvas Digitasi Interaktif | 2. Formulir Survei Spasial | 3. Visualisasi Peta Digital |
-|:---:|:---:|:---:|
-| ![Kanvas Digitasi](assets/ss_figcraft_digitasi_poligon.png) | ![Formulir Survei](assets/ss_figcraft_form_survei.png) | ![Visualisasi Peta](assets/ss_figcraft_peta_layer.png) |
-| `polygon_draw_page.dart` | `survey_form_page.dart` | `map_page.dart` |
-| Simpul interaktif, garis loop otomatis, undo titik, dan kalkulasi luas area seketika (1,48 Ha). | Mode geometri `POLYGON`, penguncian 5 simpul, nama fitur, dan dual koordinat UTM 50S. | Render `PolygonLayer` di atas Peta Dasar RBI BIG, rotasi utara (0°), dan popup detail info. |
+2. **Formulir Survei Spasial (`survey_form_page.dart`):**
+   - **Mode Geometri Dinamis:** Pengguna memilih opsi geometri `POLYGON` yang otomatis mengunci koordinat simpul hasil digitasi.
+   - **Atribut Lapangan:** Pengisian nama objek, kategori tutupan lahan (fasilitas, perairan, vegetasi, dll.), deskripsi, dan lampiran foto lapangan ber-geotagging.
+   - **Dual Sistem Koordinat:** Menampilkan koordinat centroid secara simultan dalam proyeksi metrik **UTM Zona 50S** ($X, Y$ meter) dan geografis **WGS 84** (Latitude, Longitude).
+
+3. **Render Peta Digital Utama (`map_page.dart`):**
+   - **Overlay PolygonLayer:** Menampilkan bidang poligon dengan arsiran transparan (`Colors.blue.withValues(alpha: 0.3)`) dan garis batas tegas (`borderColor: Colors.blueAccent`).
+   - **Integrasi Peta Dasar RBI BIG:** Layer poligon dirender langsung di atas Peta Rupabumi Indonesia resmi dari Badan Informasi Geospasial.
+   - **Navigasi & Interaksi:** Dilengkapi tombol orientasi utara (0°), pemantau cuaca real-time, dan popup detail saat bidang poligon disentuh.
 
 ---
 
